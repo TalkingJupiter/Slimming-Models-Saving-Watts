@@ -5,8 +5,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=24G
 #SBATCH --time=96:00:00
-#SBATCH --output=eval/ept/benchmark/%x_%j.out
-#SBATCH --error=eval/ept/benchmark/%x_%j.err
+#SBATCH --output=eval/ept/benchmark/logs/%x_%j.out
+#SBATCH --error=eval/ept/benchmark/logs/%x_%j.err
 
 set -euo pipefail
 
@@ -27,7 +27,7 @@ BATCH_SIZE=4           # batch size for students
 GPU_INDEX=0            # GPU index to monitor
 
 OUTDIR_ROOT="eval/ept/benchmark"
-OUTDIR="${OUTDIR_ROOT}/feature_${SLURM_JOB_ID}"
+OUTDIR="${OUTDIR_ROOT}/results/feature_${SLURM_JOB_ID}"
 
 mkdir -p "$OUTDIR_ROOT" "$OUTDIR" logs results || true
 

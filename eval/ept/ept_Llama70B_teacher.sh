@@ -5,8 +5,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=24G
 #SBATCH --time=12:00:00
-#SBATCH --output=eval/ept/benchmark/%x_%j.out
-#SBATCH --error=eval/ept/benchmark/%x_%j.err
+#SBATCH --output=eval/ept/benchmark/logs/%x_%j.out
+#SBATCH --error=eval/ept/benchmark/logs/%x_%j.err
 
 set -euo pipefail
 
@@ -20,7 +20,7 @@ BATCH_SIZE=2                                # Batch size for generation
 GPU_INDEX=0                                 # GPU index to monitor
 
 # Output location
-OUTFILE="eval/ept/benchmark/ept_teacher_${SLURM_JOB_ID}.json"
+OUTFILE="eval/ept/benchmark/results/ept_teacher_${SLURM_JOB_ID}.json"
 
 # -----------------------------------------------------
 # Initialization
