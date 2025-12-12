@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=ept_70B_teacher
+#SBATCH --job-name=ept_8B_student
 #SBATCH --partition=h100
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
@@ -14,18 +14,18 @@ set -euo pipefail
 # Manual Configuration (EDIT THESE DIRECTLY)
 # -----------------------------------------------------
 
-MODEL=""   # Model to benchmark
+MODEL="./traditional-model/checkpoints/epoch_0"   # Model to benchmark
 NUM_PROMPTS=100                             # Number of Dolly prompts
-BATCH_SIZE=2                                # Batch size for generation
+BATCH_SIZE=4                                # Batch size for generation
 GPU_INDEX=0                                 # GPU index to monitor
 
 # Output location
 OUTFILE="traditional-model/ept/ept_8B_trad_${SLURM_JOB_ID}.json"
-
+OUTDIR="$(dirname "$OUTFILE")"
 # -----------------------------------------------------
 # Initialization
 # -----------------------------------------------------
-mkdir -p eval/ept/benchmark logs results || true
+mkdir -p eval/ept/benchmark traditional-model/logs traditional-model/results "$OUTDIR" || true
 
 echo "===================================================="
 echo "           EPT-Bench: Energy-Per-Token"
@@ -47,7 +47,7 @@ conda activate kd || true
 # -----------------------------------------------------
 # Run Benchmark
 # -----------------------------------------------------
-python eval/ept/benchmark/run_ept_benchmark.py \
+python ./eval/ept/benchmark/run_ept_benchmark.py \
   --model "$MODEL" \
   --use-dolly \
   --num-prompts "$NUM_PROMPTS" \
