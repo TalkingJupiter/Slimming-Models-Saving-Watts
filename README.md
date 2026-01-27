@@ -1,4 +1,4 @@
-# Energy-Aware Knowledge Distillation (EAKD)
+# Slimming Models, Saving Watts: Understanding and Modeling the Impact of Knowledge Distillation on GPU Clusters
 ## High-Performance Training, Evaluation, and Energy Profiling Framework for LLM Distillation
 
 This repository provides a complete, HPC-oriented research framework for **energy-aware knowledge distillation (KD)** of large language models. It supports **response-based**, **feature-based**, and **relation-based** KD; integrates **GPU/CPU telemetry logging**; and measures **energy-per-token (EPT)**, performance retention (**OM_perf**), and overall training/inference efficiency.
@@ -132,10 +132,12 @@ Designed to run alongside KD training in Slurm jobs.
 ## 5. Baseline Training Harness (Base/)
 Contains Slurm-ready harness scripts for foundational training of:
 
-- Llama-3.1-70B-Instruct  
-- Llama-3.1-8B-Instruct  
-- Qwen-2.5-72B-Instruct  
-- Qwen-2.5-7B-Instruct  
+- Llama-3.1-70B-Instruct -> Acts as Teacher
+- Llama-3.1-8B-Instruct  -> Acts as Student
+
+Note: My moding the scripts other LLM families could be implemented.
+
+
 
 These baselines support comparison against KD-student models for:
 
@@ -150,9 +152,8 @@ These baselines support comparison against KD-student models for:
 Evaluates on standard benchmarks:
 
 - MMLU  
-- ARC  
-- TruthfulQA  
-- GSM8K  
+- ARC
+- BBL
 - HellaSwag  
 
 ### 6.2 Lighteval  
@@ -247,8 +248,6 @@ This framework enables analysis of:
 - Student-vs-teacher energy/performance retention  
 - Energy-per-token reduction from KD  
 - KD paradigm comparisons (response/feature/relation)  
-
-Suitable for SC, CCGrid, NeurIPS, and systems/ML research.
 
 ---
 
