@@ -11,6 +11,7 @@ __pycache__/
 plots/
 out/
 *.json
+*.jsonl
 *.csv
 figures/
 csvconv.py
@@ -23,3 +24,4 @@ Base/base_ckpt/
 Base/eval/
 eval/student_runner/
 telemetry/
+traditional-model/
