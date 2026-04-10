@@ -9,9 +9,7 @@ python eval/parse_results.py
 
 ## Benchmarks Included
 - MMLU
-- GSM8K
 - ARC-Challenge
-- TruthfulQA
 - HellaSwag
 - BigBench Hard (BBH)
 

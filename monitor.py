@@ -208,7 +208,7 @@ def get_gpu_info() -> list[dict[str, Any]]:
             # total energy (mJ) if supported
             try:
                 raw_energy = pynvml.nvmlDeviceGetTotalEnergyConsumption(h)
-                energy_mJ = cast(float, raw_energy) * 1000.0
+                energy_mJ = cast(float, raw_energy)
             except Exception:
                 energy_mJ = None
 
@@ -265,7 +265,7 @@ def get_cpu_info() -> dict[str, float | int | None]:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--output", required=True, help="Output JSONL file")
-    ap.add_argument("--interval", type=int, default=5, help="Seconds between samples")
+    ap.add_argument("--interval", type=int, default=1, help="Seconds between samples")
     args = ap.parse_args()
 
     os.makedirs(os.path.dirname(args.output), exist_ok=True)

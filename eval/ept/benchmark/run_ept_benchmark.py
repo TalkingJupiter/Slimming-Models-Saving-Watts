@@ -35,7 +35,7 @@ def run_ept_benchmark(
     total_input_tokens = 0
     total_output_tokens = 0
 
-    with EnergyMonitor(sample_interval=0.1, gpu_indices=gpu_indices) as mon:
+    with EnergyMonitor(sample_interval=1, gpu_indices=gpu_indices) as mon:
         for i in range(0, len(prompts), batch_size):
             batch_prompts = prompts[i : i + batch_size]
 

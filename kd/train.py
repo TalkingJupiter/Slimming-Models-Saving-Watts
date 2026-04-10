@@ -4,7 +4,7 @@ os.environ.setdefault("ACCELERATE_USE_DEEPSPEED", "false")
 
 import argparse, time, signal, pathlib
 import torch
-from torch.utils.data import DataLoader, IterableDataset
+from torch.utils.data import DataLoader, IterableDataset, get_worker_info
 from accelerate import Accelerator, DistributedDataParallelKwargs
 from transformers import get_cosine_schedule_with_warmup
 
@@ -112,9 +112,29 @@ def _load_ckpt(path, model, tok, optimizer, scheduler):
             pass
 
     st = torch.load(pathlib.Path(path) / "trainer_state.pt", map_location="cpu")
-    optimizer.load_state_dict(st["optimizer"])
-    scheduler.load_state_dict(st["scheduler"])
+    try:
+        optimizer.load_state_dict(st["optimizer"])
+        scheduler.load_state_dict(st["scheduler"])
+    except ValueError:
+        print(f"[RESUME] Optimizer/scheduler state in {path} is incompatible with the current training graph; continuing with fresh optimizer state.")
     return int(st.get("step", 0))
+
+def _save_fb_projector(projector: torch.nn.Module, out_path: pathlib.Path):
+    base = _unwrap_for_save(projector)
+    torch.save(base.state_dict(), out_path)
+
+def _load_fb_projector(projector: torch.nn.Module, in_path: pathlib.Path):
+    base = _unwrap_for_save(projector)
+    state = torch.load(in_path, map_location="cpu")
+    base.load_state_dict(state)
+
+def _get_block_hidden_state(hidden_states, block_index: int):
+    hs_index = block_index + 1
+    if hs_index >= len(hidden_states):
+        raise IndexError(
+            f"Requested transformer block {block_index}, but only {len(hidden_states) - 1} block outputs are available."
+        )
+    return hidden_states[hs_index]
 
 def _zero_touch_all_params(model: torch.nn.Module) -> torch.Tensor:
     z = None
@@ -171,8 +191,18 @@ class _ShardIter(IterableDataset):
         self.rank = rank
         self.world = world
     def __iter__(self):
+        worker = get_worker_info()
+        if worker is None:
+            worker_id = 0
+            num_workers = 1
+        else:
+            worker_id = worker.id
+            num_workers = worker.num_workers
+
+        shard_rank = self.rank * num_workers + worker_id
+        shard_world = self.world * num_workers
         for i, item in enumerate(self.ds):
-            if (i % self.world) == self.rank:
+            if (i % shard_world) == shard_rank:
                 yield item
 
 # ------------------------- Main -------------------------
@@ -198,40 +228,6 @@ def main():
     if not _enable_gc_nonreentrant(model):
         print("[GC] Non-reentrant checkpointing unavailable -> gradient checkpointing disabled for stability.")
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
-    scheduler = get_cosine_schedule_with_warmup(optimizer, args.warmup_steps, args.max_steps)
-
-    # prepare model/opt/sched only (do NOT prepare the DataLoader for iterable ds)
-    model, optimizer, scheduler = accelerator.prepare(model, optimizer, scheduler)
-
-    # ---- [Checkpoint] resume detection ----
-    save_dir = args.save_dir
-    pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
-
-    step = 0
-    def handle_sigusr1(signum, frame):
-        try:
-            if accelerator.is_main_process:
-                _save_ckpt(step, model, tok, optimizer, scheduler, save_dir)
-                print(f"[SIGNAL] Saved checkpoint at step={step} due to SIGUSR1")
-        finally:
-            pass
-    signal.signal(signal.SIGUSR1, handle_sigusr1)
-
-    if args.resume == 'auto':
-        lp = _latest_ckpt(save_dir)
-        if lp:
-            step = _load_ckpt(lp, model, tok, optimizer, scheduler)
-            if accelerator.is_main_process:
-                print(f"[RESUME] Resumed from {lp} at step={step}")
-    elif args.resume == 'path' and args.resume_path:
-        step = _load_ckpt(args.resume_path, model, tok, optimizer, scheduler)
-        if accelerator.is_main_process:
-            print(f"[RESUME] Resumed from {args.resume_path} at step={step}")
-    else:
-        if accelerator.is_main_process:
-            print("[RESUME] Starting fresh")
-
     # ---- Dataset + collate ----
     if args.kd_mode == 'rb':
         dataset = RBTopKIterableDataset(args.data)
@@ -242,6 +238,65 @@ def main():
     else:  # relb
         dataset = RelBDataset(args.data)
         collate = collate_pad
+
+    projector = None
+    if args.kd_mode == 'fb':
+        sample = next(iter(dataset))
+        student_hidden = getattr(model.config, "hidden_size", None)
+        teacher_hidden = sample["teacher_feats"].size(-1)
+        if student_hidden is None:
+            raise ValueError("Could not infer student hidden size from model.config.hidden_size")
+        projector = LinearProjector(student_hidden, teacher_hidden)
+        opt_params = list(model.parameters()) + list(projector.parameters())
+    else:
+        opt_params = model.parameters()
+
+    optimizer = torch.optim.AdamW(opt_params, lr=args.lr)
+    scheduler = get_cosine_schedule_with_warmup(optimizer, args.warmup_steps, args.max_steps)
+
+    # prepare model/opt/sched only (do NOT prepare the DataLoader for iterable ds)
+    if projector is None:
+        model, optimizer, scheduler = accelerator.prepare(model, optimizer, scheduler)
+    else:
+        model, optimizer, scheduler, projector = accelerator.prepare(model, optimizer, scheduler, projector)
+
+    # ---- [Checkpoint] resume detection ----
+    save_dir = args.save_dir
+    pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
+
+    step = 0
+    def handle_sigusr1(signum, frame):
+        try:
+            if accelerator.is_main_process:
+                _save_ckpt(step, model, tok, optimizer, scheduler, save_dir)
+                if projector is not None:
+                    _save_fb_projector(projector, pathlib.Path(save_dir) / f"ckpt_step{step:07d}" / "fb_projector.pt")
+                print(f"[SIGNAL] Saved checkpoint at step={step} due to SIGUSR1")
+        finally:
+            pass
+    signal.signal(signal.SIGUSR1, handle_sigusr1)
+
+    if args.resume == 'auto':
+        lp = _latest_ckpt(save_dir)
+        if lp:
+            step = _load_ckpt(lp, model, tok, optimizer, scheduler)
+            if projector is not None:
+                projector_path = pathlib.Path(lp) / "fb_projector.pt"
+                if projector_path.exists():
+                    _load_fb_projector(projector, projector_path)
+            if accelerator.is_main_process:
+                print(f"[RESUME] Resumed from {lp} at step={step}")
+    elif args.resume == 'path' and args.resume_path:
+        step = _load_ckpt(args.resume_path, model, tok, optimizer, scheduler)
+        if projector is not None:
+            projector_path = pathlib.Path(args.resume_path) / "fb_projector.pt"
+            if projector_path.exists():
+                _load_fb_projector(projector, projector_path)
+        if accelerator.is_main_process:
+            print(f"[RESUME] Resumed from {args.resume_path} at step={step}")
+    else:
+        if accelerator.is_main_process:
+            print("[RESUME] Starting fresh")
 
     # Shard per-rank to avoid Accelerate concatenation of uneven iterable batches
     dataset = _ShardIter(dataset, rank, world)
@@ -257,7 +312,8 @@ def main():
     )
 
     model.train()
-    projector = None
+    if projector is not None:
+        projector.train()
     t0 = time.time()
     total_tokens = 0
 
@@ -288,14 +344,8 @@ def main():
                     out = model(input_ids=input_ids, attention_mask=attn_mask,
                                 use_cache=False, output_hidden_states=True)
 
-                    s_hid = out.hidden_states[args.fb_student_layer]                 # [B,T,Hs]
+                    s_hid = _get_block_hidden_state(out.hidden_states, args.fb_student_layer)  # [B,T,Hs]
                     t_feats = batch['teacher_feats'].to(device, non_blocking=True)   # [B,T,Ht]
-
-                    if projector is None:
-                        projector = LinearProjector(s_hid.size(-1), t_feats.size(-1)).to(device)
-                        projector = accelerator.prepare(projector)
-                        # ensure projector is optimized
-                        optimizer.add_param_group({"params": projector.parameters()})
 
                     s_proj = projector(s_hid)                                        # [B,T,Ht]
 
@@ -332,6 +382,8 @@ def main():
 
             if accelerator.is_main_process and args.save_every > 0 and step > 0 and (step % args.save_every == 0):
                 _save_ckpt(step, model, tok, optimizer, scheduler, save_dir)
+                if projector is not None:
+                    _save_fb_projector(projector, pathlib.Path(save_dir) / f"ckpt_step{step:07d}" / "fb_projector.pt")
                 print(f"[ckpt] Saved {save_dir}/ckpt_step{step:07d}")
 
             total_tokens += token_this
@@ -351,6 +403,8 @@ def main():
             base.save_pretrained(args.save_dir)
         else:
             torch.save(base.state_dict(), pathlib.Path(args.save_dir) / "pytorch_model.bin")
+        if projector is not None:
+            _save_fb_projector(projector, pathlib.Path(args.save_dir) / "fb_projector.pt")
         try:
             tok.save_pretrained(args.save_dir)
         except Exception:

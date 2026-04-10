@@ -32,7 +32,7 @@ accelerate launch traditional-model/train_sft.py \
   --output_dir "traditional-model/checkpoints/" \
   --batch_size 1 \
   --grad_accum 16 \
-  --lr 1e-5 \
+  --lr 1e-4 \
   --num_epochs 1 \
   --max_length 2048
 

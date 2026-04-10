@@ -26,7 +26,7 @@ BASE_FEATURE="meta-llama/Llama-3.1-8B-Instruct"
 BASE_RESPONSE="meta-llama/Llama-3.1-8B-Instruct"
 BASE_RELATION="meta-llama/Llama-3.1-8B-Instruct"
 
-CHAT_FLAGS=( --apply_chat_template --fewshot_as_multiturn )
+CHAT_FLAGS=( --apply_chat_template)
 
 # -------------------------------------------------------------------
 # Collect adapters: all subdirs under serialization_dir/{feature,...}

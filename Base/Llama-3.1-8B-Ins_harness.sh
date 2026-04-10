@@ -82,6 +82,7 @@ lm_eval \
   --model_args "$MODEL_ARGS" \
   --tasks "$TASKS" \
   --batch_size auto \
+  --apply_chat_template \
   --output_path "$OUTFILE"
 
 echo "[INFO] Completed. File saved to $OUTFILE"

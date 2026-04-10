@@ -6,8 +6,8 @@
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=120G
 #SBATCH --time=48:00:00
-#SBATCH --output=eval/logs/%x_%j.out
-#SBATCH --error=eval/logs/%x_%j.err
+#SBATCH --output=slurm_logs/base/%x_%j.out
+#SBATCH --error=slurm_logs/base/%x_%j.err
 
 set -euo pipefail
 
@@ -50,7 +50,7 @@ if [[ -n "$ADAPTER" ]]; then
 fi
 
 TS=$(date +%Y%m%d_%H%M%S)
-OUTFILE="eval/results/harness_${RUN_NAME}_${TS}.json"
+OUTFILE="results/base/eval_${RUN_NAME}_${TS}.json"
 
 echo "[INFO] Output -> $OUTFILE"
 

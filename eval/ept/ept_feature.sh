@@ -23,7 +23,7 @@ FEATURE_MODELS=(
 )
 
 NUM_PROMPTS=100        # number of Dolly prompts
-BATCH_SIZE=4           # batch size for students
+BATCH_SIZE=2           # batch size for students
 GPU_INDEX=0            # GPU index to monitor
 
 OUTDIR_ROOT="eval/ept/benchmark"

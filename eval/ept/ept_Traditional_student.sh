@@ -16,7 +16,7 @@ set -euo pipefail
 
 MODEL="traditional-model/checkpoints/epoch_0"   # Model to benchmark
 NUM_PROMPTS=100                             # Number of Dolly prompts
-BATCH_SIZE=4                                # Batch size for generation
+BATCH_SIZE=2                                # Batch size for generation
 GPU_INDEX=0                                 # GPU index to monitor
 
 # Output location

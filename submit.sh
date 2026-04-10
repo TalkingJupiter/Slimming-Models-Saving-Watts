@@ -22,8 +22,13 @@ LOGDIR="logs"
 # Stage scripts
 ENV_JOB="scripts/_env_single_node.sh"
 SHARDS_JOB="scripts/run_build_shards.sh"
-CACHES_JOB="scripts/build_caches.sh"
+CACHE_TOPK_JOB="scripts/run_build_topk_cache.sh"
+CACHE_FB_JOB="scripts/run_build_fb_cache.sh"
+CACHE_RELB_JOB="scripts/run_build_relb_cache.sh"
 KD_JOB="scripts/submit_all_kd_single_node.sh"
+TRAD_MODEL_TRAIN="traditional-model/slurm/run_sft.sh"
+TRAD_MODEL_EVAL="traditional-model/slurm/eval_8B_submitter.sh"
+TRAD_MODEL_EPT="traditional-model/slurm/ept_8B_submitter.sh"
 
 # Partition for the tiny cleanup/disarm jobs (CPU ok)
 PARTITION_CPU="${PARTITION_CPU:-zen4}"
@@ -82,8 +87,14 @@ submit_disarm() {
 # =======================
 need_file "$ENV_JOB"
 need_file "$SHARDS_JOB"
-need_file "$CACHES_JOB"
+need_file "$CACHE_TOPK_JOB"
+need_file "$CACHE_FB_JOB"
+need_file "$CACHE_RELB_JOB"
 need_file "$KD_JOB"
+
+need_file "$TRAD_MODEL_TRAIN"
+need_file "$TRAD_MODEL_EVAL"
+need_file "$TRAD_MODEL_EPT"
 
 # =======================
 # Submit chain
@@ -99,26 +110,54 @@ jid_shards=$(submit "$SHARDS_JOB" \
   --export=HF_DATASETS="tatsu-lab/alpaca,cerebras/SlimPajama-627B",WEIGHTS="1,1",SPLIT=train,STREAMING=1,OUT=data/shards.jsonl)
 echo "[SUBMIT] build_shards    -> $jid_shards (afterok:$jid_env)"
 
-jid_caches=$(submit "$CACHES_JOB" --dependency="afterok:${jid_shards}")
-echo "[SUBMIT] build_caches    -> $jid_caches (afterok:$jid_shards)"
+jid_cache_topk=$(submit "$CACHE_TOPK_JOB" --dependency="afterok:${jid_shards}")
+echo "[SUBMIT] cache_topk      -> $jid_cache_topk (afterok:$jid_shards)"
 
-jid_kd=$(submit "$KD_JOB" --dependency="afterok:${jid_caches}")
-echo "[SUBMIT] kd_pipeline     -> $jid_kd (afterok:$jid_caches)"
+jid_cache_fb=$(submit "$CACHE_FB_JOB" --dependency="afterok:${jid_cache_topk}")
+echo "[SUBMIT] cache_fb        -> $jid_cache_fb (afterok:$jid_cache_topk)"
+
+jid_cache_relb=$(submit "$CACHE_RELB_JOB" --dependency="afterok:${jid_cache_fb}")
+echo "[SUBMIT] cache_relb      -> $jid_cache_relb (afterok:$jid_cache_fb)"
+
+jid_kd=$(submit "$KD_JOB" --dependency="afterok:${jid_cache_relb}")
+echo "[SUBMIT] kd_pipeline     -> $jid_kd (afterok:$jid_cache_relb)"
+
+jid_trad_train=$(submit "$TRAD_MODEL_TRAIN")
+echo "[SUBMIT] TRADITIONAL Student Training Submitted"
+
+jid_trad_eval=$(submit "$TRAD_MODEL_EVAL" --dependency="afterok:${jid_trad_train}")
+echo "[SUBMIT] TRADITIONAL Student EVAL -> $jid_trad_eval (afterok:$jid_trad_train)"
+
+jid_trad_ept=$(submit "$TRAD_MODEL_EPT" --dependency="afterok:${jid_train_train}")
+echo "[SUBMIT] TRADITIONAL Student EPT -> $jid_trad_ept (afterok:$jid_trad_train)"
 
 # =======================
 # Cleanup on failure + Disarm on success
 # =======================
 # If env fails -> cancel shards, caches, kd
-jid_clean_env=$(submit_cleanup "afternotok:${jid_env}"   "$jid_shards" "$jid_caches" "$jid_kd")
+jid_clean_env=$(submit_cleanup "afternotok:${jid_env}" \
+  "$jid_shards" "$jid_cache_topk" "$jid_cache_fb" "$jid_cache_relb" "$jid_kd")
 submit_disarm "afterok:${jid_env}"    "$jid_clean_env"
 
 # If shards fail -> cancel caches, kd
-jid_clean_shr=$(submit_cleanup "afternotok:${jid_shards}"              "$jid_caches" "$jid_kd")
+jid_clean_shr=$(submit_cleanup "afternotok:${jid_shards}" \
+  "$jid_cache_topk" "$jid_cache_fb" "$jid_cache_relb" "$jid_kd")
 submit_disarm "afterok:${jid_shards}" "$jid_clean_shr"
 
-# If caches fail -> cancel kd
-jid_clean_cch=$(submit_cleanup "afternotok:${jid_caches}"                           "$jid_kd")
-submit_disarm "afterok:${jid_caches}" "$jid_clean_cch"
+# If top-k cache fails -> cancel downstream caches and kd
+jid_clean_topk=$(submit_cleanup "afternotok:${jid_cache_topk}" \
+  "$jid_cache_fb" "$jid_cache_relb" "$jid_kd")
+submit_disarm "afterok:${jid_cache_topk}" "$jid_clean_topk"
+
+# If FB cache fails -> cancel downstream caches and kd
+jid_clean_fb=$(submit_cleanup "afternotok:${jid_cache_fb}" \
+  "$jid_cache_relb" "$jid_kd")
+submit_disarm "afterok:${jid_cache_fb}" "$jid_clean_fb"
+
+# If RelB cache fails -> cancel kd
+jid_clean_relb=$(submit_cleanup "afternotok:${jid_cache_relb}" "$jid_kd")
+submit_disarm "afterok:${jid_cache_relb}" "$jid_clean_relb"
 
 echo "[INFO] All jobs submitted:"
-printf "  env:    %s\n  shards: %s\n  caches: %s\n  kd:     %s\n" "$jid_env" "$jid_shards" "$jid_caches" "$jid_kd"
+printf "  env:        %s\n  shards:     %s\n  cache_topk: %s\n  cache_fb:   %s\n  cache_relb: %s\n  kd:         %s\n" \
+  "$jid_env" "$jid_shards" "$jid_cache_topk" "$jid_cache_fb" "$jid_cache_relb" "$jid_kd"

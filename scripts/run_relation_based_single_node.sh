@@ -37,7 +37,7 @@ accelerate launch \
     --lora.r 16 \
     --lora.alpha 32 \
     --lr 1e-4 \
-    --bash_size 4 \
+    --bash_size 2 \
     --save-dir "$RUN_DIR" \
     --save_every 200 \
     --resume auto 
