@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=kd_eval_harness
-#SBATCH --partition=h100
+#SBATCH --partition=toreador
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=32G
-#SBATCH --time=60:00:00
+#SBATCH --time=48:00:00
 #SBATCH --output=eval/student_runner/logs/%x_%j.out
 #SBATCH --error=eval/student_runner/logs/%x_%j.err
 

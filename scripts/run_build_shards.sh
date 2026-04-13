@@ -2,7 +2,7 @@
 #SBATCH --job-name=kd_build_shards
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
-#SBATCH --partition=zen4
+#SBATCH --partition=toreador
 #SBATCH --time=06:00:00
 #SBATCH --output=logs/shards/%x_%j.out
 #SBATCH --error=logs/shards/%x_%j.err

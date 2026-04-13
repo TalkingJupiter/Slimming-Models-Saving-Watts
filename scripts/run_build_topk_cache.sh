@@ -2,7 +2,7 @@
 #SBATCH --job-name=kd_build_topk_cache
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=4
-#SBATCH --partition=h100
+#SBATCH --partition=toreador
 #SBATCH --time=48:00:00
 #SBATCH --exclusive
 #SBATCH --signal=B:SIGUSR1@300

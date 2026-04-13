@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=8B_trad_eval
-#SBATCH --partition=h100
+#SBATCH --partition=toreador
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=32G
-#SBATCH --time=96:00:00
+#SBATCH --time=48:00:00
 #SBATCH --output=traditional-model/logs/eval_trad_%j.out
 #SBATCH --error=traditional-model/logs/eval_trad_%j.err
 

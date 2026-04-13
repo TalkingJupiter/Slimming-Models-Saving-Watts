@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=baseline_8B_sft
-#SBATCH --partition=h100
+#SBATCH --partition=toreador
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=64G
-#SBATCH --time=96:00:00
+#SBATCH --time=48:00:00
 #SBATCH --output=traditional-model/logs/sft_%j.out
 #SBATCH --error=traditional-model/logs/sft_%j.err
 

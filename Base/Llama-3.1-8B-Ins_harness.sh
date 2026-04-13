@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=base_llama3.18B-Ins_harness
-#SBATCH --partition=h100
+#SBATCH --partition=toreador
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=6

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=pipeline_launcher
-#SBATCH --partition=zen4              # CPU partition to run the launcher itself
+#SBATCH --partition=quanah              # CPU partition to run the launcher itself
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1

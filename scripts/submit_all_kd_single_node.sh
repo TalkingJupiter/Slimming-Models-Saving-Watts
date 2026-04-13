@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=kd_submitter_single_node
 #SBATCH --nodes=1
-#SBATCH --partition=h100
+#SBATCH --partition=toreador
 #SBATCH --time=00:15:00
 #SBATCH --output=logs/submission/%x_%j.out
 #SBATCH --error=logs/submission/%x_%j.err
