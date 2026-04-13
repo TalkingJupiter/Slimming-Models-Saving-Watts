@@ -38,8 +38,8 @@ EPT_FEATURE="eval/ept/ept_feature.sh"
 EPT_RELATION="eval/ept/ept_relation.sh"
 EPT_RESPONSE="eval/ept/ept_response.sh"
 
-EVAL_TEACHER="Base/LLama-3.1-70B-Ins_harness.sh"
-EVAL_STUDENT="Base/LLama-3.1-8B-Ins_harness.sh"
+EVAL_TEACHER="Base/Llama-3.1-70B-Ins_harness.sh"
+EVAL_STUDENT="Base/Llama-3.1-8B-Ins_harness.sh"
 EVAL_KD="eval/hardness_submitter.sh"
 
 TRAD_MODEL_TRAIN="traditional-model/slurm/run_sft.sh"
@@ -174,7 +174,7 @@ echo "[SUBMIT] Student Evaluation -> (afterok:$jid_env)"
 jid_teacher_ept=$(submit "$EPT_TEACHER" --dependency="afterok:${jid_env}")
 echo "[SUBMIT] TEACHER EPT -> (afterok:$jid_env)"
 
-jid_student_ept=$(submit "$EPT_TEACHER" --dependency="afterok:${jid_env}")
+jid_student_ept=$(submit "$EPT_STUDENT" --dependency="afterok:${jid_env}")
 echo "[SUBMIT] STUDENT EPT-> (afterok:$jid_env)"
 
 jid_feature_ept=$(submit "$EPT_FEATURE" --dependency="afterok:${jid_feature_kd}")
@@ -192,7 +192,7 @@ echo "[SUBMIT] TRADITIONAL Student Training Submitted (afterok:${jid_env})"
 jid_trad_eval=$(submit "$TRAD_MODEL_EVAL" --dependency="afterok:${jid_trad_train}")
 echo "[SUBMIT] TRADITIONAL Student EVAL -> $jid_trad_eval (afterok:$jid_trad_train)"
 
-jid_trad_ept=$(submit "$TRAD_MODEL_EPT" --dependency="afterok:${jid_train_train}")
+jid_trad_ept=$(submit "$TRAD_MODEL_EPT" --dependency="afterok:${jid_trad_train}")
 echo "[SUBMIT] TRADITIONAL Student EPT -> $jid_trad_ept (afterok:$jid_trad_train)"
 
 # =======================

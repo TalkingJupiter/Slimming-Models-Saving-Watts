@@ -28,18 +28,18 @@ fi
 # -------------------------------
 # Node/GPU topology
 # -------------------------------
-GPUS_PER_NODE=${GPUS_PER_NODE:-4}      # each REPACSS node has 4x H100
+GPUS_PER_NODE=${GPUS_PER_NODE:-3}      # each REPACSS node has 4x H100
 PROCS_PER_GPU=${PROCS_PER_GPU:-1}      # set >1 if you want multiple processes per GPU
 NUM_PROCESSES=$(( GPUS_PER_NODE * PROCS_PER_GPU ))
 
 # -------------------------------
 # NCCL tuning for NVLink on H100
 # -------------------------------
-export NCCL_P2P_LEVEL=NVL
-export NCCL_MIN_NCHANNELS=8
+# export NCCL_P2P_LEVEL=NVL
+# export NCCL_MIN_NCHANNELS=8
 export NCCL_DEBUG=WARN
 
 # -------------------------------
 # Project dirs
 # -------------------------------
-mkdir -p logs results serialization_dir
+# mkdir -p logs results serialization_dir
