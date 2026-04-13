@@ -2,7 +2,7 @@
 #SBATCH --job-name=kd_eval_harness
 #SBATCH --partition=h100
 #SBATCH --nodes=1
-#SBATCH --gpus-per-node=1
+#SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=32G
 #SBATCH --time=60:00:00
@@ -18,7 +18,7 @@ BASE=${1:?Usage: sbatch kd_eval_harness.slurm <base_model_id> <adapter_dir> [ext
 ADAPTER=${2:?Usage: sbatch kd_eval_harness.slurm <base_model_id> <adapter_dir> [extra flags]}
 EXTRA_FLAGS=( "${@:3}" )  # e.g., --apply_chat_template --fewshot_as_multiturn
 
-mkdir -p logs results
+mkdir -p logs results/eval/${BASE}
 source ~/.bashrc || true
 conda activate kd || true
 [[ -f scripts/_env_single_node.sh ]] && source scripts/_env_single_node.sh
@@ -39,6 +39,6 @@ lm_eval \
   "${EXTRA_FLAGS[@]}" \
   --tasks mmlu,hellaswag,bbh,arc_challenge \
   --batch_size auto \
-  --output_path "results/${SLURM_JOB_ID}_harness_${RUN_NAME}_${TS}.json"
+  --output_path "results/eval/${BASE}/${SLURM_JOB_ID}_harness_${RUN_NAME}_${TS}.json"
 
-echo "[INFO] Done -> results/${SLURM_JOB_ID}_harness_${RUN_NAME}_${TS}.json"
+echo "[INFO] Done -> results/eval/${SLURM_JOB_ID}_harness_${RUN_NAME}_${TS}.json"
