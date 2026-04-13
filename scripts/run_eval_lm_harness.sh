@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=kd_eval_lm_harness
 #SBATCH --nodes=1
-#SBATCH --gpus-per-node=1
+#SBATCH --gpus-per-node=3
 #SBATCH --partition=toreador
 #SBATCH --time=06:00:00
 #SBATCH --output=logs/%x_%j.out

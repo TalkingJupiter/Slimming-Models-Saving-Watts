@@ -3,7 +3,7 @@
 #SBATCH --partition=toreador
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
-#SBATCH --cpus-per-task=6
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
 #SBATCH --time=48:00:00
 #SBATCH --output=traditional-model/logs/eval_trad_%j.out

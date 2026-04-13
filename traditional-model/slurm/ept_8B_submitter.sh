@@ -2,7 +2,7 @@
 #SBATCH --job-name=ept_8B_student
 #SBATCH --partition=toreador
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=24G
 #SBATCH --time=48:00:00
 #SBATCH --output=traditional-model/logs/%x_%j.out

@@ -2,7 +2,7 @@
 #SBATCH --job-name=ept_response_students
 #SBATCH --partition=toreador
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:3
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=120G
 #SBATCH --time=48:00:00

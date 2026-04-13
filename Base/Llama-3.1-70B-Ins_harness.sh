@@ -2,7 +2,7 @@
 #SBATCH --job-name=base_llama3.170B-Ins_harness
 #SBATCH --partition=toreador
 #SBATCH --nodes=1
-#SBATCH --gpus-per-node=4
+#SBATCH --gpus-per-node=3
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=120G
 #SBATCH --time=48:00:00

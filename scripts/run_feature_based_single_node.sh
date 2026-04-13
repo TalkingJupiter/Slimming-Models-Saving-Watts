@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=kd_feature_based_single_node
 #SBATCH --nodes=1
-#SBATCH --gpus-per-node=4
+#SBATCH --gpus-per-node=3
 #SBATCH --partition=toreador
 #SBATCH --time=24:00:00
 #SBATCH --exclusive

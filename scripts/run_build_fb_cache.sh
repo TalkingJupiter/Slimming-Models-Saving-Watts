@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=kd_build_fb_cache
 #SBATCH --nodes=1
-#SBATCH --gpus-per-node=4
+#SBATCH --gpus-per-node=3
 #SBATCH --partition=toreador
 #SBATCH --time=48:00:00
 #SBATCH --exclusive
