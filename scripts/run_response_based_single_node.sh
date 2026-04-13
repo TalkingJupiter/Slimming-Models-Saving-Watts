@@ -7,8 +7,8 @@
 #SBATCH --exclusive
 #SBATCH --signal=B:SIGUSR1@300
 #SBATCH --requeue
-#SBATCH --output=logs/2nd/response/%x_%j.out
-#SBATCH --error=logs/2nd/response/%x_%j.err
+#SBATCH --output=logs/response/%x_%j.out
+#SBATCH --error=logs/response/%x_%j.err
 #SBATCH --nodelist=rpg-93-6
 #SBATCH --array=0-4
 
@@ -19,7 +19,7 @@ echo "[INFO] Response-Based KD | node=1 | gpus=$GPUS_PER_NODE | procs=$NUM_PROCE
 
 # Node-local telemetry
 mkdir -p logs/telemetry/$SLURM_JOB_ID
-python monitor.py --output logs/telemetry/2nd/response/$SLURM_JOB_ID/${HOSTNAME}.jsonl --interval 1 &
+python monitor.py --output logs/telemetry/response/$SLURM_JOB_ID/${HOSTNAME}.jsonl --interval 1 &
 MON_PID=$!
 
 RUN_DIR="serialization_dir/response/$(date +%Y%m%d_%H%M)_RB_1n"
