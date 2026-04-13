@@ -2,8 +2,8 @@
 #SBATCH --job-name=ept_relation_students
 #SBATCH --partition=h100
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=24G
+#SBATCH --cpus-per-task=26
+#SBATCH --mem=120G
 #SBATCH --time=96:00:00
 #SBATCH --output=eval/ept/benchmark/logs/%x_%j.out
 #SBATCH --error=eval/ept/benchmark/logs/%x_%j.err
@@ -15,11 +15,11 @@ set -euo pipefail
 # -----------------------------------------------------
 
 RELATION_MODELS=(
-    "serialization_dir/relation/20251113_2057_RelB_1n"
-    "serialization_dir/relation/20251113_2108_RelB_1n"
-    "serialization_dir/relation/20251113_2121_RelB_1n"
-    "serialization_dir/relation/20251113_2131_RelB_1n"
-    "serialization_dir/relation/20251113_2140_RelB_1n"
+    "serialization_dir/relation/Model1"
+    "serialization_dir/relation/Model2"
+    "serialization_dir/relation/Model3"
+    "serialization_dir/relation/Model4"
+    "serialization_dir/relation/Model5"
 )
 
 NUM_PROMPTS=100
