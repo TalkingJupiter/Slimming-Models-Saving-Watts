@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+#SBATCH --job-name=env_setup
+#SBATCH --partition=quanah              # CPU partition to run the launcher itself
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=1G
+#SBATCH --time=00:10:00
+#SBATCH --output=logs/%x_%j.out
+#SBATCH --error=logs/%x_%j.err
+
 set -euo pipefail
 
 # -------------------------------
