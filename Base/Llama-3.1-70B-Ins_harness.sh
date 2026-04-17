@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=base_llama3.170B-Ins_harness
 #SBATCH --partition=h100
+#SBATCH --reservation=cpufreq
 #SBATCH --nodes=1
+#SBATCH --nodelist=rpg-93-[3-4]
 #SBATCH --gpus-per-node=4
-#SBATCH --cpus-per-task=6
+#SBATCH --cpus-per-task=64
 #SBATCH --mem=120G
 #SBATCH --time=48:00:00
 #SBATCH --output=slurm_logs/base/%x_%j.out
@@ -88,12 +90,13 @@ fi
 
 echo "[INFO] Running BASE CASE lm_eval..."
 
-lm_eval \
-  --model hf \
-  --model_args "$MODEL_ARGS" \
-  --tasks "$TASKS" \
-  --batch_size auto \
-  --apply_chat_template \
-  --output_path "$OUTFILE"
+accelerate launch --multi_gpu\
+  -m lm_eval \
+    --model hf \
+    --model_args "$MODEL_ARGS" \
+    --tasks "$TASKS" \
+    --batch_size auto \
+    --apply_chat_template \
+    --output_path "$OUTFILE"
 
 echo "[INFO] Completed. File saved to $OUTFILE"

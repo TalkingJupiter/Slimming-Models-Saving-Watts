@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=ept_traditional_student
 #SBATCH --partition=h100
+#SBATCH --reservation=cpufreq
 #SBATCH --gres=gpu:1
+#SBATCH --nodelist=rpg-93-[3-4]
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=120G
-#SBATCH --time=96:00:00
+#SBATCH --time=48:00:00
 #SBATCH --output=eval/ept/benchmark/logs/%x_%j.out
 #SBATCH --error=eval/ept/benchmark/logs/%x_%j.err
 

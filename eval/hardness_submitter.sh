@@ -132,15 +132,15 @@ build_afterok_dependency () {
 # 2. response   (after all feature jobs finish successfully)
 # 3. relation   (after all response jobs finish successfully)
 # -------------------------------------------------------------------
-FEATURE_JOB_IDS=$(submit_group "$BASE_FEATURE" "" "${ADAPTERS_FEATURE[@]}")
-FEATURE_DEP=$(build_afterok_dependency "$FEATURE_JOB_IDS")
+#FEATURE_JOB_IDS=$(submit_group "$BASE_FEATURE" "" "${ADAPTERS_FEATURE[@]}")
+#FEATURE_DEP=$(build_afterok_dependency "$FEATURE_JOB_IDS")
 
-RESPONSE_JOB_IDS=$(submit_group "$BASE_RESPONSE" "$FEATURE_DEP" "${ADAPTERS_RESPONSE[@]}")
-RESPONSE_DEP=$(build_afterok_dependency "$RESPONSE_JOB_IDS")
+#RESPONSE_JOB_IDS=$(submit_group "$BASE_RESPONSE" "" "${ADAPTERS_RESPONSE[@]}")
+#RESPONSE_DEP=$(build_afterok_dependency "$RESPONSE_JOB_IDS")
 
-RELATION_JOB_IDS=$(submit_group "$BASE_RELATION" "$RESPONSE_DEP" "${ADAPTERS_RELATION[@]}")
+RELATION_JOB_IDS=$(submit_group "$BASE_RELATION" "" "${ADAPTERS_RELATION[@]}")
 
-echo "[INFO] Feature job IDs : ${FEATURE_JOB_IDS:-<none>}"
-echo "[INFO] Response job IDs: ${RESPONSE_JOB_IDS:-<none>}"
+#echo "[INFO] Feature job IDs : ${FEATURE_JOB_IDS:-<none>}"
+#echo "[INFO] Response job IDs: ${RESPONSE_JOB_IDS:-<none>}"
 echo "[INFO] Relation job IDs: ${RELATION_JOB_IDS:-<none>}"
 echo "[INFO] Submission chain complete."

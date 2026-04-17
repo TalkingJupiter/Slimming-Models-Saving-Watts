@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=ept_70B_base_student
 #SBATCH --partition=h100
+#SBATCH --reservation=cpufreq
 #SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=4
+#SBATCH --nodelist=rpg-93-3
 #SBATCH --mem=120G
 #SBATCH --time=96:00:00
 #SBATCH --output=eval/ept/benchmark/logs/%x_%j.out
@@ -13,7 +15,7 @@ set -euo pipefail
 MODEL="meta-llama/Llama-3.1-70B-Instruct"
 NUM_PROMPTS=100
 BATCH_SIZE=2
-GPU_INDICES="0,1,2,4"
+GPU_INDICES="0,1,2,3"
 
 OUTFILE="eval/ept/benchmark/results/ept_base_student_${SLURM_JOB_ID}.json"
 
