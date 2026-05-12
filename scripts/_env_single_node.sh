@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+#SBATCH --job-name=env_setup
+#SBATCH --partition=zen4              # CPU partition to run the launcher itself
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=1G
+#SBATCH --time=00:20:00
+#SBATCH --output=logs/env_setup/%x_%j.out
+#SBATCH --error=logs/env_setup/%x_%j.err
+
+
 set -euo pipefail
 
 # -------------------------------

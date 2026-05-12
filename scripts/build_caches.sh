@@ -7,14 +7,14 @@
 #SBATCH --exclusive
 #SBATCH --signal=B:SIGUSR1@300
 #SBATCH --requeue
-#SBATCH --output=logs/cache/%x_%j.out
-#SBATCH --error=logs/cache/%x_%j.err
+#SBATCH --output=logs/build_cache/%x_%j.out
+#SBATCH --error=logs/build_cache/%x_%j.err
 
 set -euo pipefail
 source scripts/_env_single_node.sh
 
 IN=${IN:-data/shards.jsonl}
-TEACHER=${TEACHER:-meta-llama/Llama-3.1-70B-Instruct}
+TEACHER=${TEACHER:-}
 
 echo "[INFO] Teacher: $TEACHER"
 echo "[INFO] Input:   $IN"
@@ -27,21 +27,21 @@ if [[ ! -s "$IN" ]]; then
 fi
 
 # Make sure output dirs exist
-mkdir -p data/topk_k16 data/fb_hints_L22 data/relb_embeds
+mkdir -p data/$TEACHER/topk_k16 data/$TEACHER/fb_hints_L22 data/$TEACHER/relb_embeds
 
 # ---- RB top-k caches
 python teacher_farm/make_topk_cache.py \
   --model "$TEACHER" \
   --input_jsonl "$IN" \
-  --out_dir data/topk_k16/ \
+  --out_dir data/$TEACHER/topk_k16/ \
   --k 16 \
-  --dtype float16
+  --dtype bfloat16
 
 # ---- FB hidden-state caches (e.g., teacher layer 22)
 python teacher_farm/make_hidden_cache.py \
   --model "$TEACHER" \
   --input_jsonl "$IN" \
-  --out_dir data/fb_hints_L22/ \
+  --out_dir data/$TEACHER/fb_hints_L22/ \
   --layers 22 \
   --batch_size 1 \
   --max_length 2048 \
@@ -53,6 +53,6 @@ python teacher_farm/make_hidden_cache.py \
 python teacher_farm/make_embed_cache.py \
   --model "$TEACHER" \
   --input_jsonl "$IN" \
-  --out_dir data/relb_embeds/
+  --out_dir data/$TEACHER/relb_embeds/
 
-echo "[INFO] Cache build complete"
+echo "[INFO] $TEACHER Cache build complete"

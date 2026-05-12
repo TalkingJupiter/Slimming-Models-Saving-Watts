@@ -15,14 +15,18 @@
 set -euo pipefail
 source scripts/_env_single_node.sh
 
-echo "[INFO] Response-Based KD | node=1 | gpus=$GPUS_PER_NODE | procs=$NUM_PROCESSES"
+STUDENT_MODEL=${STUDENT_MODEL:-}
+TEACHER_DATA=${TEACHER_DATA:-}
+SAFE_STUDENT_NAME=${SAFE_STUDENT_NAME:-}
+
+echo "[INFO] $STUDENT_MODEL Response-Based KD | node=1 | gpus=$GPUS_PER_NODE | procs=$NUM_PROCESSES"
 
 # Node-local telemetry
-mkdir -p logs/telemetry/$SLURM_JOB_ID
-python monitor.py --output logs/telemetry/2nd/response/$SLURM_JOB_ID/${HOSTNAME}.jsonl --interval 1 &
+mkdir -p logs/telemetry/"$SLURM_JOB_ID"_"$SLURM_ARRAY_TASK_ID"
+python monitor.py --output logs/telemetry/$SAFE_STUDENT_NAME/feature/"$SLURM_JOB_ID"_"$SLURM_ARRAY_TASK_ID"/telemetry.jsonl --interval 1 &
 MON_PID=$!
 
-RUN_DIR="serialization_dir/response/$(date +%Y%m%d_%H%M)_RB_1n"
+RUN_DIR="serialization_dir/$SAFE_STUDENT_NAME/feature/$SLURM_ARRAY_TASK_ID"
 mkdir -p "$RUN_DIR"
 
 accelerate launch \
@@ -31,8 +35,8 @@ accelerate launch \
   --deepspeed_config_file configs/ds_zero3.json \
   --module kd.train \
     --kd.mode rb \
-    --student meta-llama/Llama-3.1-8B-Instruct \
-    --data "data/topk_k16/*.parquet" \
+    --student $STUDENT_MODEL \
+    --data "data/$TEACHER_DATA/*.parquet" \
     --rb.topk 16 \
     --rb.temperature 2.0 \
     --lora.r 16 \
@@ -41,10 +45,11 @@ accelerate launch \
     --bash_size 2 \
     --save-dir "$RUN_DIR" \
     --save_every 200 \
+    --max_steps 2000 \
     --resume auto 
     
 
 kill $MON_PID || true
-echo "[INFO] RB KD complete"
+echo "[INFO] $STUDENT_MODEL RB KD complete"
 
     # --max_steps 2000 \
