@@ -13,7 +13,7 @@ GPU=""
 
 SAFE_TEACHER_NAME="${TEACHER//\//_}"
 SAFE_STUDENT_NAME="${STUDENT//\//_}"
-TEACHER_DATA="${TEACHER_DATA:-$TEACHER}"
+TEACHER_DATA="${TEACHER_DATA:-$SAFE_TEACHER_NAME}"
 
 # AUTOMATED PARTITION SELECTION
 if [[ "$TARGET" == "repacss" ]]; then
@@ -86,7 +86,6 @@ case "$TARGET:$JOB_KIND" in
       --signal=B:SIGUSR1@300
       --requeue
     )
-    ARRAY_ARGS=(--array=0-4)
     
     SCRIPT_ARGS=()
 
