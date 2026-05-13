@@ -28,7 +28,7 @@ def main():
 
     os.makedirs(args.out_dir, exist_ok=True)
 
-    dtype_map = {'bfloat': torch.bfloat16, 'float16': torch.float16, 'float32': torch.float32}
+    dtype_map = {'bfloat16': torch.bfloat16, 'float16': torch.float16, 'float32': torch.float32}
     dtype = dtype_map[args.dtype]
 
     tok = AutoTokenizer.from_pretrained(args.model, use_fast=True)
