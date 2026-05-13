@@ -23,17 +23,22 @@ which nvcc || echo "nvcc not found in PATH"
 
 conda activate kd
 
-python monitor.py --output traditional-model/telemetry/telemetry_sft.jsonl --interval 1 &
-MONITOR_PID=$!
+MODEL_NAME="${MODEL_NAME:-${SAFE_STUDENT_NAME:-traditional_student}}"
+MODEL_ID="${MODEL:-${STUDENT_MODEL:-meta-llama/Llama-3.1-8B-Instruct}}"
+SHARDS_FILE="${SHARDS_FILE:-data/shards.jsonl}"
+OUTPUT_DIR="${OUT_DIR:-traditional-model/checkpoints/$MODEL_NAME/${SLURM_ARRAY_TASK_ID:-0}}"
+TELEMETRY_OUTPUT="${TELEMETRY_OUTPUT:-traditional-model/telemetry/$MODEL_NAME/${SLURM_ARRAY_TASK_ID:-0}/train.jsonl}"
 
 accelerate launch traditional-model/train_sft.py \
-  --model_name "meta-llama/Llama-3.1-8B-Instruct" \
-  --shards_file "data/shards.jsonl" \
-  --output_dir "traditional-model/checkpoints/" \
+  --model_name "$MODEL_ID" \
+  --shards_file "$SHARDS_FILE" \
+  --output_dir "$OUTPUT_DIR" \
   --batch_size 1 \
   --grad_accum 16 \
   --lr 1e-5 \
   --num_epochs 1 \
-  --max_length 2048
-
-kill $MONITOR_PID
+  --max_length 2048 \
+  --save_every 1000 \
+  --telemetry \
+  --telemetry_output "$TELEMETRY_OUTPUT" \
+  --telemetry_interval 1
