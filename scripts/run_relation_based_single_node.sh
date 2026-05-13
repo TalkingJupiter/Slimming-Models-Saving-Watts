@@ -35,7 +35,7 @@ accelerate launch \
   --module kd.train \
     --kd.mode relb \
     --student $STUDENT_MODEL \
-    --data "data/$TEACHER_DATA/*.parquet" \
+    --data "data/$TEACHER_DATA/relb_embeds/*.parquet" \
     --relb.lambda_dist 1.0 \
     --relb.lambda_angle 0.5 \
     --lora.r 16 \

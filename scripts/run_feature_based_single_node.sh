@@ -35,7 +35,7 @@ accelerate launch \
   --module kd.train \
     --kd.mode fb \
     --student $STUDENT_MODEL \
-    --data "data/$TEACHER_DATA/*.parquet" \
+    --data "data/$TEACHER_DATA/fb_hints_L22/*.parquet" \
     --fb.teacher_layer 22 \
     --fb.student_layer 12 \
     --fb.token_subset_ratio 0.25 \

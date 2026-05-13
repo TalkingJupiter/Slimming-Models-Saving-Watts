@@ -36,7 +36,7 @@ accelerate launch \
   --module kd.train \
     --kd.mode rb \
     --student $STUDENT_MODEL \
-    --data "data/$TEACHER_DATA/*.parquet" \
+    --data "data/$TEACHER_DATA/topk_k16/*.parquet" \
     --rb.topk 16 \
     --rb.temperature 2.0 \
     --lora.r 16 \
