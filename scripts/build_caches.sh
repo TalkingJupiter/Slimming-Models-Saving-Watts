@@ -1,22 +1,15 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=kd_build_caches
-#SBATCH --nodes=1
-#SBATCH --gpus-per-node=4
-#SBATCH --partition=h100
-#SBATCH --time=48:00:00
-#SBATCH --exclusive
-#SBATCH --signal=B:SIGUSR1@300
-#SBATCH --requeue
-#SBATCH --output=logs/build_cache/%x_%j.out
-#SBATCH --error=logs/build_cache/%x_%j.err
-
 set -euo pipefail
+
 source scripts/_env_single_node.sh
 
 IN=${IN:-data/shards.jsonl}
 TEACHER=${TEACHER:-}
+SAFE_TEACHER_NAME=${SAFE_TEACHER_NAME:-${TEACHER//\//_}}
+TEACHER_DATA=${TEACHER_DATA:-$SAFE_TEACHER_NAME}
 
 echo "[INFO] Teacher: $TEACHER"
+echo "[INFO] Teacher data dir: data/$TEACHER_DATA"
 echo "[INFO] Input:   $IN"
 echo "[INFO] GPUs visible: ${CUDA_VISIBLE_DEVICES:-unset}"
 
@@ -27,13 +20,13 @@ if [[ ! -s "$IN" ]]; then
 fi
 
 # Make sure output dirs exist
-mkdir -p data/$TEACHER/topk_k16 data/$TEACHER/fb_hints_L22 data/$TEACHER/relb_embeds
+mkdir -p data/$TEACHER_DATA/topk_k16 data/$TEACHER_DATA/fb_hints_L22 data/$TEACHER_DATA/relb_embeds
 
 # ---- RB top-k caches
 python teacher_farm/make_topk_cache.py \
   --model "$TEACHER" \
   --input_jsonl "$IN" \
-  --out_dir data/$TEACHER/topk_k16/ \
+  --out_dir data/$TEACHER_DATA/topk_k16/ \
   --k 16 \
   --dtype bfloat16
 
@@ -41,7 +34,7 @@ python teacher_farm/make_topk_cache.py \
 python teacher_farm/make_hidden_cache.py \
   --model "$TEACHER" \
   --input_jsonl "$IN" \
-  --out_dir data/$TEACHER/fb_hints_L22/ \
+  --out_dir data/$TEACHER_DATA/fb_hints_L22/ \
   --layers 22 \
   --batch_size 1 \
   --max_length 2048 \
@@ -53,6 +46,6 @@ python teacher_farm/make_hidden_cache.py \
 python teacher_farm/make_embed_cache.py \
   --model "$TEACHER" \
   --input_jsonl "$IN" \
-  --out_dir data/$TEACHER/relb_embeds/
+  --out_dir data/$TEACHER_DATA/relb_embeds/
 
-echo "[INFO] $TEACHER Cache build complete"
+echo "[INFO] $TEACHER Cache build complete: data/$TEACHER_DATA"
