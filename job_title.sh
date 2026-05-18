@@ -84,6 +84,7 @@ case "$TARGET:$JOB_KIND" in
   TIME="48:00:00"
   JOB_SCRIPT="scripts/build_feature_cache.sh"
   GRES_ARGS=(--gpus-per-node=4)
+  ARRAY_ARGS=(--array=0-4)
   EXTRA_SBATCH_ARGS=(
     --exclusive
     --signal=B:SIGUSR1@300
@@ -106,6 +107,7 @@ case "$TARGET:$JOB_KIND" in
     TIME="48:00:00"
     JOB_SCRIPT="scripts/build_relation_cache.sh"
     GRES_ARGS=(--gpus-per-node=4)
+    ARRAY_ARGS=(--array=0-4)
     EXTRA_SBATCH_ARGS=(
       --exclusive
       --signal=B:SIGUSR1@300
@@ -128,6 +130,7 @@ case "$TARGET:$JOB_KIND" in
     TIME="48:00:00"
     JOB_SCRIPT="scripts/build_response_cache.sh"
     GRES_ARGS=(--gpus-per-node=4)
+    ARRAY_ARGS=(--array=0-4)
     EXTRA_SBATCH_ARGS=(
       --exclusive
       --signal=B:SIGUSR1@300

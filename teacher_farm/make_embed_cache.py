@@ -64,6 +64,18 @@ def batched(iterable, n):
     if batch:
         yield batch
 
+
+def read_jsonl_shard(path, shard_index: int, num_shards: int):
+    record_idx = 0
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            if record_idx % num_shards == shard_index:
+                yield json.loads(line)
+            record_idx += 1
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--model', required=True)
@@ -71,10 +83,19 @@ def main():
     ap.add_argument('--out_dir', required=True)
     ap.add_argument('--batch_size', type=int, default=4)
     ap.add_argument('--max_length', type=int, default=8192)
+    ap.add_argument('--shard_index', type=int, default=0,
+                    help='Process records where record_index %% num_shards == shard_index')
+    ap.add_argument('--num_shards', type=int, default=1,
+                    help='Total number of dynamic input shards')
     ap.add_argument('--telemetry', action='store_true')
     ap.add_argument('--telemetry_output', type=str, default="results/cache/telemetry/relation/telemetry.jsonl")
     ap.add_argument('--telemetry_interval', type=float, default=1.0)
     args = ap.parse_args()
+
+    if args.num_shards < 1:
+        raise ValueError("--num_shards must be >= 1")
+    if args.shard_index < 0 or args.shard_index >= args.num_shards:
+        raise ValueError("--shard_index must satisfy 0 <= shard_index < num_shards")
 
     os.makedirs(args.out_dir, exist_ok=True)
     
@@ -88,7 +109,8 @@ def main():
     model.eval()
 
     print("[INFO] Loading input dataset...")
-    texts = [json.loads(l)['text'] for l in open(args.input_jsonl) if l.strip()]
+    texts = [rec['text'] for rec in read_jsonl_shard(args.input_jsonl, args.shard_index, args.num_shards)]
+    print(f"[INFO] Processing dynamic shard {args.shard_index}/{args.num_shards} with {len(texts)} records")
     shard_size = 128
     rows, shard_idx = [], 0
 
@@ -128,14 +150,22 @@ def main():
 
                 if len(rows) >= shard_size:
                     table = pa.Table.from_pylist(rows)
-                    out_path = os.path.join(args.out_dir, f'relb_embeds_{shard_idx:06d}.parquet')
+                    if args.num_shards > 1:
+                        filename = f'relb_embeds_s{args.shard_index:03d}_{shard_idx:06d}.parquet'
+                    else:
+                        filename = f'relb_embeds_{shard_idx:06d}.parquet'
+                    out_path = os.path.join(args.out_dir, filename)
                     pq.write_table(table, out_path, compression='zstd')
                     print('Wrote', out_path)
                     rows, shard_idx = [], shard_idx + 1
 
         if rows:
             table = pa.Table.from_pylist(rows)
-            out_path = os.path.join(args.out_dir, f'relb_embeds_{shard_idx:06d}.parquet')
+            if args.num_shards > 1:
+                filename = f'relb_embeds_s{args.shard_index:03d}_{shard_idx:06d}.parquet'
+            else:
+                filename = f'relb_embeds_{shard_idx:06d}.parquet'
+            out_path = os.path.join(args.out_dir, filename)
             pq.write_table(table, out_path, compression='zstd')
             print('Wrote', out_path)
     finally:
