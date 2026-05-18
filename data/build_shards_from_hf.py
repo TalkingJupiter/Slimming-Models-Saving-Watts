@@ -41,7 +41,7 @@ def record_to_text(rec):
 def load_one(name, split, data_dir=None, streaming=True):
     kwargs = {}
     if data_dir: kwargs["data_dir"] = data_dir
-    ds = load_dataset(name, split=split, streaming=streaming, **kwargs)
+    ds = load_dataset(name, split=split, streaming=streaming, trust_remote_code=True, **kwargs)
     return ds
 
 
@@ -100,7 +100,9 @@ def main():
 
     try:
         if args.streaming:
-            # streaming: iterate each dataset independently to its quota
+            # For capped streaming builds, collect selected records first so mixed
+            # datasets are shuffled instead of written in dataset order.
+            buffered_rows = [] if args.max_samples is not None else None
             for i, name in enumerate(args.dataset):
                 quota = None if per_ds_quota is None else per_ds_quota[i]
                 ds = load_one(name, args.split, data_dir=args.data_dir, streaming=True)
@@ -108,11 +110,19 @@ def main():
                 for rec in ds:
                     txt = record_to_text(rec)
                     if not txt: continue
-                    writers.write(json.dumps({"text": txt}, ensure_ascii=False) + "\n")
+                    row = {"text": txt}
+                    if buffered_rows is None:
+                        writers.write(json.dumps(row, ensure_ascii=False) + "\n")
+                    else:
+                        buffered_rows.append(row)
                     out_count += 1
                     c += 1
                     if quota is not None and c >= quota:
                         break
+            if buffered_rows is not None:
+                random.shuffle(buffered_rows)
+                for row in buffered_rows:
+                    writers.write(json.dumps(row, ensure_ascii=False) + "\n")
             print(f"[INFO] Wrote {out_count} records to {args.out}")
         else:
             # non-streaming: load in memory (safer for small datasets)
