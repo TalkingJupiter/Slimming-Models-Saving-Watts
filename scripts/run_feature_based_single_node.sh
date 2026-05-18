@@ -9,11 +9,8 @@ SAFE_STUDENT_NAME=${SAFE_STUDENT_NAME:-}
 
 echo "[INFO] $STUDENT_MODEL Feature-Based KD | node=1 | gpus=$GPUS_PER_NODE | procs=$NUM_PROCESSES"
 
-mkdir -p logs/telemetry/"$SLURM_JOB_ID"_"$SLURM_ARRAY_TASK_ID"
-python monitor.py --output logs/telemetry/$SAFE_STUDENT_NAME/feature/"$SLURM_JOB_ID"_"$SLURM_ARRAY_TASK_ID"/telemetry.jsonl --interval 1.0 &
-MON_PID=$!
-
 RUN_DIR="serialization_dir/$SAFE_STUDENT_NAME/feature/$SLURM_ARRAY_TASK_ID"
+TELEMETRY_OUT="logs/telemetry/$SAFE_STUDENT_NAME/feature/${SLURM_ARRAY_TASK_ID}/${SLURM_JOB_ID}_telemetry.jsonl"
 mkdir -p "$RUN_DIR"
 
 
@@ -35,7 +32,9 @@ accelerate launch \
     --save-dir "$RUN_DIR" \
     --save_every 200 \
     --max_steps 5000 \
+    --telemetry \
+    --telemetry_output "$TELEMETRY_OUT" \
+    --telemetry_interval 1.0 \
     --resume auto 
 
-kill $MON_PID || true
 echo "[INFO] $STUDENT_MODEL FB KD complete"
