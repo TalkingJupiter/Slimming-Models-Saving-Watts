@@ -20,16 +20,19 @@ if [[ "$TARGET" == "repacss" ]]; then
   echo "Target entered as repacss"
   CPU="zen4"
   GPU="h100"
+  PROCS_PER_GPU="${PROCS_PER_GPU:-2}"
 elif [[ "$TARGET" == "hpcc" || "$TARGET" == "hpcc_a100" ]]; then
   echo "Target entered as hpcc_a100"
   TARGET="hpcc"
   CPU="cpu"
   GPU="a100"
+  PROCS_PER_GPU="${PROCS_PER_GPU:-1}"
 elif [[ "$TARGET" == "hpcc_v100" ]]; then
   echo "Target entered as hpcc_v100"
   TARGET="hpcc"
   CPU="cpu"
   GPU="v100"
+  PROCS_PER_GPU="${PROCS_PER_GPU:-1}"
 fi
 
 GRES_ARGS=()
@@ -63,7 +66,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="0"
     CPUS_PER_TASK="8"
-    MEM="1G"
+    MEM="50G"
     TIME="06:00:00"
     JOB_SCRIPT="scripts/run_build_shards.sh"
 
@@ -71,15 +74,37 @@ case "$TARGET:$JOB_KIND" in
     ERROR="logs/shards/%x_%j.err"
     ;;
 
-  repacss:build_caches)
-    JOB_NAME="kd_build_caches_${SAFE_TEACHER_NAME}"
+  repacss:build_feature_cache)
+  JOB_NAME="kd_build_feature_cache_${SAFE_TEACHER_NAME}"
+  PARTITION=$GPU
+  NODES="1"
+  GPUS_PER_NODE="4"
+  CPUS_PER_TASK="64"
+  MEM="128G"
+  TIME="48:00:00"
+  JOB_SCRIPT="scripts/build_feature_cache.sh"
+  GRES_ARGS=(--gpus-per-node=4)
+  EXTRA_SBATCH_ARGS=(
+    --exclusive
+    --signal=B:SIGUSR1@300
+    --requeue
+  )
+  
+  SCRIPT_ARGS=()
+
+  OUTPUT="logs/build_cache/feature/%x_%A_%a.out"
+  ERROR="logs/build_cache/feature/%x_%A_%a.err"
+  ;;
+
+  repacss:build_relation_cache)
+    JOB_NAME="kd_build_relation_cache_${SAFE_TEACHER_NAME}"
     PARTITION=$GPU
     NODES="1"
     GPUS_PER_NODE="4"
-    CPUS_PER_TASK="16"
+    CPUS_PER_TASK="64"
     MEM="128G"
     TIME="48:00:00"
-    JOB_SCRIPT="scripts/build_caches.sh"
+    JOB_SCRIPT="scripts/build_relation_cache.sh"
     GRES_ARGS=(--gpus-per-node=4)
     EXTRA_SBATCH_ARGS=(
       --exclusive
@@ -89,9 +114,31 @@ case "$TARGET:$JOB_KIND" in
     
     SCRIPT_ARGS=()
 
-    OUTPUT="logs/build_cache/%x_%A_%a.out"
-    ERROR="logs/build_cache/%x_%A_%a.err"
+    OUTPUT="logs/build_cache/relation/%x_%A_%a.out"
+    ERROR="logs/build_cache/relation/%x_%A_%a.err"
     ;;
+  
+  repacss:build_response_cache)
+    JOB_NAME="kd_build_response_cache_${SAFE_TEACHER_NAME}"
+    PARTITION=$GPU
+    NODES="1"
+    GPUS_PER_NODE="4"
+    CPUS_PER_TASK="64"
+    MEM="128G"
+    TIME="48:00:00"
+    JOB_SCRIPT="scripts/build_response_cache.sh"
+    GRES_ARGS=(--gpus-per-node=4)
+    EXTRA_SBATCH_ARGS=(
+      --exclusive
+      --signal=B:SIGUSR1@300
+      --requeue
+    )
+    
+    SCRIPT_ARGS=()
+
+    OUTPUT="logs/build_cache/response/%x_%A_%a.out"
+    ERROR="logs/build_cache/response/%x_%A_%a.err"
+    ;;  
 
   repacss:feature)
     JOB_NAME="kd_feature_${SAFE_STUDENT_NAME}_from_${SAFE_TEACHER_NAME}"
@@ -252,7 +299,7 @@ case "$TARGET:$JOB_KIND" in
     CPUS_PER_TASK="16"
     MEM="24G"
     TIME="48:00:00"
-    JOB_SCRIPT="eval/ept/ept_Llama70B_student.sh"
+    JOB_SCRIPT="eval/ept/ept_Llama70B_teacher.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
     EXTRA_SBATCH_ARGS=()
@@ -269,7 +316,7 @@ case "$TARGET:$JOB_KIND" in
     CPUS_PER_TASK="16"
     MEM="24G"
     TIME="48:00:00"
-    JOB_SCRIPT="eval/ept/ept_Llama70B_student.sh"
+    JOB_SCRIPT="eval/ept/ept_Traditional_student.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
     EXTRA_SBATCH_ARGS=()
@@ -451,5 +498,5 @@ sbatch \
   "${ARRAY_ARGS[@]}" \
   "${EXTRA_SBATCH_ARGS[@]}" \
   "${DEPENDENCY_ARGS[@]}" \
-  --export=ALL,TARGET="$TARGET",JOB_KIND="$JOB_KIND",GPUS_PER_NODE="$GPUS_PER_NODE",ENV_NAME="kd",TEACHER="$TEACHER",STUDENT="$STUDENT",STUDENT_MODEL="$STUDENT",TEACHER_DATA="$TEACHER_DATA",SAFE_STUDENT_NAME="$SAFE_STUDENT_NAME",SAFE_TEACHER_NAME="$SAFE_TEACHER_NAME" \
+  --export=ALL,TARGET="$TARGET",JOB_KIND="$JOB_KIND",GPUS_PER_NODE="$GPUS_PER_NODE",PROCS_PER_GPU="$PROCS_PER_GPU",ENV_NAME="kd",TEACHER="$TEACHER",STUDENT="$STUDENT",STUDENT_MODEL="$STUDENT",TEACHER_DATA="$TEACHER_DATA",SAFE_STUDENT_NAME="$SAFE_STUDENT_NAME",SAFE_TEACHER_NAME="$SAFE_TEACHER_NAME" \
   "$JOB_SCRIPT" "$@"
