@@ -1,15 +1,4 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=kd_feature_based_single_node
-#SBATCH --nodes=1
-#SBATCH --gpus-per-node=4
-#SBATCH --partition=h100
-#SBATCH --time=24:00:00
-#SBATCH --exclusive
-#SBATCH --signal=B:SIGUSR1@300
-#SBATCH --requeue
-#SBATCH --output=logs/feature/%x_%j.out
-#SBATCH --error=logs/feature/%x_%j.err
-#SBATCH --array=0-4
 
 set -euo pipefail
 source scripts/_env_single_node.sh
@@ -45,10 +34,8 @@ accelerate launch \
     --bash_size 2 \
     --save-dir "$RUN_DIR" \
     --save_every 200 \
-    --max_steps 2000 \
+    --max_steps 5000 \
     --resume auto 
 
 kill $MON_PID || true
 echo "[INFO] $STUDENT_MODEL FB KD complete"
-
-    # --max_steps 2000 \
