@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover
 
 
 class TelemetrySampler:
-    def __init__(self, output_path: str, interval: float = 5.0) -> None:
+    def __init__(self, output_path: str, interval: float = 1.0) -> None:
         self.output_path = os.path.abspath(output_path)
         self.interval = interval
         self._stop_event = threading.Event()
@@ -108,7 +108,7 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="traditional-model/telemetry/train_sft.jsonl",
     )
-    parser.add_argument("--telemetry_interval", type=float, default=5.0)
+    parser.add_argument("--telemetry_interval", type=float, default=1.0)
     return parser.parse_args()
 
 
