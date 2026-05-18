@@ -2,7 +2,7 @@
 Usage:
   python monitor.py --output logs/runX/telemetry.jsonl --interval 5
 """
-import os, sys, time, json, signal, psutil, argparse, datetime
+import os, sys, time, json, signal, psutil, argparse, datetime, glob
 from zoneinfo import ZoneInfo
 from typing import cast, Any
 
@@ -85,22 +85,52 @@ def get_gpu_info() -> list[dict[str, Any]]:
     return out
 
 
-def get_cpu_info() -> dict[str, float | int | None]:
+def get_cpu_info() -> dict[str, Any]:
     cpu_util = psutil.cpu_percent(interval=None)
     ram = psutil.virtual_memory()
-    info: dict[str, float | int | None] = {
+    info: dict[str, Any] = {
         "cpu_utilization_percent": cpu_util,
         "ram_used_MB": ram.used / (1024**2),
         "ram_total_MB": ram.total / (1024**2),
+        "cpu_energy_uj_total": None,
+        "cpu_sockets": []
     }
 
-    rapl_path = "/sys/class/powercap/intel-rapl:0/energy_uj"
-    try:
-        with open(rapl_path, "r") as f:
-            energy_uj = int(f.read().strip())
-        info["cpu_energy_uj"] = energy_uj  # cumulative since boot
-    except Exception:
-        info["cpu_energy_uj"] = None
+    total_energy = 0
+    found = False
+
+    for rapl_dir in sorted(glob.glob("/sys/class/powercap/intel-rapl:*")):
+        energy_path = os.path.join(rapl_dir, "energy_uj")
+        name_path = os.path.join(rapl_dir, "name")
+
+        if not os.path.isfile(energy_path):
+            continue
+
+        try:
+            with open(energy_path, "r") as f:
+                energy_uj = int(f.read().strip())
+
+            try:
+                with open(name_path, "r") as f:
+                    name = f.read().strip()
+            except Exception:
+                name = os.path.basename(rapl_dir)
+            
+            info["cpu_sockets"].append({
+                "rapl_path": rapl_dir,
+                "name": name,
+                "energy_uj": energy_uj
+            })
+
+            total_energy += energy_uj
+            found = True
+        
+        except Exception:
+            continue
+    
+    if found:
+        info["cpu_energy_uj_total"] = total_energy
+
     return info
 
 # ------------ Main loop ------------
