@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=baseline_8B_sft
-#SBATCH --partition=h100
-#SBATCH --nodes=1
-#SBATCH --gpus-per-node=1
-#SBATCH --cpus-per-task=6
-#SBATCH --mem=64G
-#SBATCH --time=96:00:00
-#SBATCH --output=traditional-model/logs/sft_%j.out
-#SBATCH --error=traditional-model/logs/sft_%j.err
+
 
 set -euo pipefail
 cd ${SLURM_SUBMIT_DIR:-$PWD}
@@ -26,8 +18,10 @@ conda activate kd
 MODEL_NAME="${MODEL_NAME:-${SAFE_STUDENT_NAME:-traditional_student}}"
 MODEL_ID="${MODEL:-${STUDENT_MODEL:-meta-llama/Llama-3.1-8B-Instruct}}"
 SHARDS_FILE="${SHARDS_FILE:-data/shards.jsonl}"
-OUTPUT_DIR="${OUT_DIR:-traditional-model/checkpoints/$MODEL_NAME/${SLURM_ARRAY_TASK_ID:-0}}"
-TELEMETRY_OUTPUT="${TELEMETRY_OUTPUT:-traditional-model/telemetry/$MODEL_NAME/${SLURM_ARRAY_TASK_ID:-0}/train.jsonl}"
+ARRAY_TASK_ID="${SLURM_ARRAY_TASK_ID:-0}"
+STUDENT_RUN_NAME="${SAFE_STUDENT_NAME:-$MODEL_NAME}"
+OUTPUT_DIR="${OUT_DIR:-traditional_student/$STUDENT_RUN_NAME/$ARRAY_TASK_ID}"
+TELEMETRY_OUTPUT="${TELEMETRY_OUTPUT:-results/traditional_student/$STUDENT_RUN_NAME/$ARRAY_TASK_ID/telemetry.json}"
 
 accelerate launch traditional-model/train_sft.py \
   --model_name "$MODEL_ID" \
