@@ -341,6 +341,21 @@ case "$TARGET:$JOB_KIND" in
     OUTPUT="logs/eval/harness_submission_%x_%j.out"
     ERROR="logs/eval/harness_submission_%x_%j.err"
     ;;
+  
+  repacss:traditional_eval)
+    JOB_NAME="Traditional_model_harness"
+    PARTITION=$GPU
+    NODES="1"
+    GPUS_PER_NODE="1"
+    CPUS_PER_TASK="6"
+    MEM="32G"
+    TIME="48:00:00"
+    JOB_SCRIPT="traditional-model/slurm/eval_8B_submitter.sh"
+    GRES_ARGS=(--gpus-per-node=1)
+    ARRAY_ARGS=(--array=0-4)
+    OUTPUT=logs/eval/$SAFE_STUDENT_NAME/traditional_model/%x_%A_%a.out
+    ERROR=logs/eval/$SAFE_STUDENT_NAME/traditional_model/%x_%A_%a.err
+  ;;
 
 
 # ---------------------------------

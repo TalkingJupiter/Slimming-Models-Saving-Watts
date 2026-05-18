@@ -1,34 +1,5 @@
 #!/usr/bin/env bash
 
-# set -euo pipefail
-# cd "${SLURM_SUBMIT_DIR:-$PWD}"
-
-# BASE=${1:-./traditional_student/$SAFE_STUDENT_NAME/*/final/}
-# EXTRA_FLAGS=( "${@:2}" )
-
-# mkdir -p logs results
-# source ~/.bashrc || true
-# conda activate kd || true
-# [[ -f scripts/_env_single_node.sh ]] && source scripts/_env_single_node.sh
-
-# SAFE_BASE="${BASE//\//_}"
-# RUN_NAME="${SAFE_BASE}__traditional"
-
-
-# echo "[INFO] CWD: $(pwd)"
-# echo "[INFO] Base (pretrained): $BASE"
-
-# lm_eval \
-#   --model hf \
-#   --model_args "pretrained=${BASE},trust_remote_code=True,dtype=bfloat16" \
-#   "${EXTRA_FLAGS[@]}" \
-#   --tasks mmlu,hellaswag,bbh,arc_challenge \
-#   --batch_size auto \
-#   --output_path "results/traditional_student/${SAFE_STUDENT_NAME}_harness_${RUN_NAME}_${TS}.json"
-
-# echo "[INFO] Done -> results/${SLURM_JOB_ID}_harness_${RUN_NAME}_${TS}.json"
-
-
 set -euo pipefail
 source scripts/_env_single_node.sh
 
@@ -52,6 +23,13 @@ CHECKPOINTS_TRAD=()
 mapfile -t CHECKPOINTS_TRAD < <(
   find "$TRAD_ROOT" -mindepth 2 -maxdepth 2 -type d -name final | sort
 )
+
+ARRAY_TASK_ID="${SLURM_ARRAY_TASK_ID:-0}"
+
+if [[ "$ARRAY_TASK_ID" -ge "${#CHECKPOINTS_TRAD[@]}" ]]; then
+  echo "[WARN] No checkpoint for SLURM_ARRAY_TASK_ID=$ARRAY_TASK_ID under $TRAD_ROOT"
+  exit 0
+fi
 
 submit_group() {
   local base="$1"; shift
@@ -79,4 +57,4 @@ submit_group() {
   done
 }
 
-submit_group "$STUDENT_MODEL" "${CHECKPOINTS_TRAD[@]}"
+submit_group "$STUDENT_MODEL" "${CHECKPOINTS_TRAD[$ARRAY_TASK_ID]}"
