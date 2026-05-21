@@ -1,4 +1,4 @@
-import argparse, os, json, math, sys, time, datetime, threading
+import argparse, os, json, math, sys, time, datetime, threading, uuid
 from typing import Any, Dict, Optional
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -74,6 +74,52 @@ def read_jsonl_shard(path, shard_index: int, num_shards: int):
             if record_idx % num_shards == shard_index:
                 yield json.loads(line)
             record_idx += 1
+
+
+def _format_bytes(num_bytes: int) -> str:
+    value = float(num_bytes)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if value < 1024.0 or unit == "TiB":
+            return f"{value:.1f} {unit}"
+        value /= 1024.0
+    return f"{value:.1f} TiB"
+
+
+def write_parquet_atomic(table: pa.Table, out_path: str) -> None:
+    out_dir = os.path.dirname(os.path.abspath(out_path)) or "."
+    os.makedirs(out_dir, exist_ok=True)
+
+    final_exists = os.path.exists(out_path)
+    temp_path = os.path.join(
+        out_dir,
+        f".{os.path.basename(out_path)}.{os.getpid()}.{uuid.uuid4().hex}.tmp",
+    )
+    try:
+        pq.write_table(table, temp_path, compression="zstd")
+        os.replace(temp_path, out_path)
+    except Exception as exc:
+        try:
+            usage = os.statvfs(out_dir)
+            free_bytes = usage.f_bavail * usage.f_frsize
+            free_text = _format_bytes(free_bytes)
+        except OSError:
+            free_text = "unknown"
+        try:
+            temp_size = os.path.getsize(temp_path)
+            temp_size_text = _format_bytes(temp_size)
+        except OSError:
+            temp_size_text = "not created"
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
+        raise OSError(
+            "failed to write parquet shard "
+            f"{out_path!r} via temporary file {temp_path!r}; "
+            f"directory free space={free_text}; temp size={temp_size_text}; "
+            f"final file already existed={final_exists}"
+        ) from exc
 
 
 def main():
@@ -155,7 +201,7 @@ def main():
                     else:
                         filename = f'relb_embeds_{shard_idx:06d}.parquet'
                     out_path = os.path.join(args.out_dir, filename)
-                    pq.write_table(table, out_path, compression='zstd')
+                    write_parquet_atomic(table, out_path)
                     print('Wrote', out_path)
                     rows, shard_idx = [], shard_idx + 1
 
@@ -166,7 +212,7 @@ def main():
             else:
                 filename = f'relb_embeds_{shard_idx:06d}.parquet'
             out_path = os.path.join(args.out_dir, filename)
-            pq.write_table(table, out_path, compression='zstd')
+            write_parquet_atomic(table, out_path)
             print('Wrote', out_path)
     finally:
         if sampler is not None:
