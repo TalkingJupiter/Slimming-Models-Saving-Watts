@@ -11,6 +11,8 @@ PY
 
 STUDENT_MODEL=${STUDENT:-"meta-llama/Llama-3.1-8B"}
 SAFE_STUDENT_NAME=${STUDENT_MODEL//\//_}
+STUDENT_MODEL_SOURCE=$(resolve_hf_model "$STUDENT_MODEL")
+echo "[INFO] Student model source: $STUDENT_MODEL_SOURCE"
 
 CHAT_FLAGS=( --apply_chat_template --fewshot_as_multiturn)
 
@@ -57,4 +59,4 @@ submit_group() {
   done
 }
 
-submit_group "$STUDENT_MODEL" "${CHECKPOINTS_TRAD[$ARRAY_TASK_ID]}"
+submit_group "$STUDENT_MODEL_SOURCE" "${CHECKPOINTS_TRAD[$ARRAY_TASK_ID]}"
