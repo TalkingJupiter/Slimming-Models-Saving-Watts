@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=kd_eval_submitter
-#SBATCH --partition=zen4
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
-#SBATCH --time=00:05:00
-#SBATCH --output=eval/logs/student/%x_%j.out
-#SBATCH --error=eval/logs/student/%x_%j.err
 
 set -euo pipefail
+source scripts/_env_single_node.sh
 
 # -------------------------------------------------------------------
 # Helper to get absolute paths (portable even if 'readlink -f' is missing)
@@ -22,16 +15,17 @@ PY
 # -------------------------------------------------------------------
 # Bases (Instruct variants; will use chat template flags)
 # -------------------------------------------------------------------
-BASE_FEATURE="meta-llama/Llama-3.1-8B-Instruct"
-BASE_RESPONSE="meta-llama/Llama-3.1-8B-Instruct"
-BASE_RELATION="meta-llama/Llama-3.1-8B-Instruct"
+STUDENT_MODEL=${STUDENT:-"meta-llama/Llama-3.1-8B"}
+SAFE_STUDENT_NAME=${SAFE_STUDENT_NAME:-${STUDENT_MODEL//\//_}}
+STUDENT_MODEL_SOURCE=$(resolve_hf_model "$STUDENT_MODEL")
+echo "[INFO] Student model source: $STUDENT_MODEL_SOURCE"
 
 CHAT_FLAGS=( --apply_chat_template --fewshot_as_multiturn )
 
 # -------------------------------------------------------------------
-# Collect adapters: all subdirs under serialization_dir/{feature,...}
+# Collect adapters: all subdirs under serialization_dir/<student>/{feature,...}
 # -------------------------------------------------------------------
-SER_ROOT="$(abspath serialization_dir)"
+SER_ROOT="$(abspath serialization_dir/${SAFE_STUDENT_NAME})"
 
 ADAPTERS_FEATURE=()
 ADAPTERS_RELATION=()
@@ -82,6 +76,6 @@ submit_group () {
 # -------------------------------------------------------------------
 # Submit all groups
 # -------------------------------------------------------------------
-submit_group "$BASE_FEATURE"  "${ADAPTERS_FEATURE[@]}"
-submit_group "$BASE_RESPONSE" "${ADAPTERS_RESPONSE[@]}"
-submit_group "$BASE_RELATION" "${ADAPTERS_RELATION[@]}"
+submit_group "$STUDENT_MODEL_SOURCE"  "${ADAPTERS_FEATURE[@]}"
+submit_group "$STUDENT_MODEL_SOURCE" "${ADAPTERS_RESPONSE[@]}"
+submit_group "$STUDENT_MODEL_SOURCE" "${ADAPTERS_RELATION[@]}"
