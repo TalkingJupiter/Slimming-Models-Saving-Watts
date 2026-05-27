@@ -25,6 +25,7 @@ SHARD_MAX_SAMPLES="${MAX_SAMPLES:-300000}"
 SHARD_SPLIT="${SPLIT:-train}"
 SHARD_STREAMING="${STREAMING:-1}"
 SHARD_OUT="${OUT:-data/shards.jsonl}"
+EPT_REPEATS="${EPT_REPEATS:-5}"
 
 LAST_JOB_ID=""
 
@@ -49,6 +50,7 @@ submit_job() {
     "TEACHER=$TEACHER"
     "STUDENT=$STUDENT"
     "TEACHER_DATA=$TEACHER_DATA"
+    "EPT_REPEATS=$EPT_REPEATS"
   )
 
   if [[ "$job_kind" == "build_shards" ]]; then
@@ -102,11 +104,14 @@ afterok() {
 usage() {
   cat <<USAGE
 Usage:
-  bash submit_h100.sh
-  sbatch submit_h100.sh
+  bash submit_h100.sh [all]
+  sbatch submit_h100.sh [all]
 
 Optional model overrides:
   TEACHER="meta-llama/Meta-Llama-3.1-70B" STUDENT="meta-llama/Meta-Llama-3.1-8B" bash submit_h100.sh
+
+Optional EPT override:
+  EPT_REPEATS="$EPT_REPEATS" bash submit_h100.sh
 
 Shard build defaults:
   HF_DATASETS="$SHARD_HF_DATASETS"
@@ -117,11 +122,26 @@ Shard build defaults:
   OUT="$SHARD_OUT"
 
 Pipeline dependencies:
-  env -> shards
-  shards -> teacher caches and traditional student training
-  teacher caches -> feature/relation/response distillation
-  distillations + traditional student -> EPT jobs
-  EPT jobs -> harness submitter
+  env -> build_shards
+  env -> warm_hf_cache
+  build_shards + warm_hf_cache -> feature cache -> relation cache -> response cache
+  build_shards -> traditional SFT
+  caches -> feature/relation/response KD distillation
+  KD distillations + traditional SFT -> base student EPT -> base teacher EPT
+  base teacher EPT -> feature EPT -> relation EPT -> response EPT -> traditional EPT
+  KD EPT + traditional EPT -> harness submitter -> traditional/base harness jobs
+
+EPT output layout:
+  Base student:
+    results/${SAFE_STUDENT_NAME}/BASE/EPT/ept_base<array_task>.json
+  Base teacher:
+    results/${SAFE_TEACHER_NAME}/BASE/EPT/ept_base<array_task>.json
+  KD feature/relation/response:
+    results/${SAFE_STUDENT_NAME}/{feature,relation,response}/<model_number>/EPT/ept_repeat<repeat>.json
+    model_number = SLURM_ARRAY_TASK_ID / EPT_REPEATS + 1
+    repeat       = SLURM_ARRAY_TASK_ID % EPT_REPEATS + 1
+  Traditional SFT:
+    results/${SAFE_STUDENT_NAME}/traditional/<array_task>/EPT/ept_traditional_<array_task>.json
 USAGE
 }
 
@@ -146,7 +166,12 @@ echo "[PIPELINE] teacher_data=$TEACHER_DATA"
 echo "[PIPELINE] shard_datasets=$SHARD_HF_DATASETS"
 echo "[PIPELINE] shard_weights=$SHARD_WEIGHTS"
 echo "[PIPELINE] shard_max_samples=$SHARD_MAX_SAMPLES"
+echo "[PIPELINE] shard_split=$SHARD_SPLIT"
+echo "[PIPELINE] shard_streaming=$SHARD_STREAMING"
 echo "[PIPELINE] shard_out=$SHARD_OUT"
+echo "[PIPELINE] ept_repeats=$EPT_REPEATS"
+echo "[PIPELINE] hf_cache_root=${HF_CACHE_ROOT:-.hf_cache}"
+echo "[PIPELINE] ept_kd_layout=results/${SAFE_STUDENT_NAME}/{feature,relation,response}/<model_number>/EPT/ept_repeat<repeat>.json"
 
 submit_job env
 ENV_ID="$LAST_JOB_ID"
@@ -154,69 +179,91 @@ ENV_ID="$LAST_JOB_ID"
 submit_job build_shards "$(afterok "$ENV_ID")"
 SHARDS_ID="$LAST_JOB_ID"
 
-submit_job build_feature_cache "$(afterok "$SHARDS_ID")"
+submit_job warm_hf_cache "$(afterok "$ENV_ID")"
+WARM_HF_CACHE_ID="$LAST_JOB_ID"
+
+submit_job build_feature_cache "$(afterok "$SHARDS_ID" "$WARM_HF_CACHE_ID")"
 FEATURE_CACHE_ID="$LAST_JOB_ID"
 
-submit_job build_relation_cache "$(afterok "$SHARDS_ID")"
+submit_job build_relation_cache "$(afterok "$SHARDS_ID" "$FEATURE_CACHE_ID")"
 RELATION_CACHE_ID="$LAST_JOB_ID"
 
-submit_job build_response_cache "$(afterok "$SHARDS_ID")"
+submit_job build_response_cache "$(afterok "$SHARDS_ID" "$RELATION_CACHE_ID")"
 RESPONSE_CACHE_ID="$LAST_JOB_ID"
 
-submit_job traditional "$(afterok "$SHARDS_ID")"
-TRADITIONAL_ID="$LAST_JOB_ID"
 
 submit_job feature "$(afterok "$FEATURE_CACHE_ID")"
 FEATURE_ID="$LAST_JOB_ID"
 
-submit_job relation "$(afterok "$RELATION_CACHE_ID")"
+submit_job relation "$(afterok "$RELATION_CACHE_ID" "$FEATURE_ID")"
 RELATION_ID="$LAST_JOB_ID"
 
-submit_job response "$(afterok "$RESPONSE_CACHE_ID")"
+submit_job response "$(afterok "$RESPONSE_CACHE_ID" "$RELATION_ID")"
 RESPONSE_ID="$LAST_JOB_ID"
 
-# DISTILL_AND_TRAD_DEP="$(afterok "$FEATURE_ID" "$RELATION_ID" "$RESPONSE_ID" "$TRADITIONAL_ID")"
+submit_job traditional "$(afterok "$RESPONSE_ID")"
+TRADITIONAL_ID="$LAST_JOB_ID"
 
-# submit_job ept_feature "$DISTILL_AND_TRAD_DEP"
-# EPT_FEATURE_ID="$LAST_JOB_ID"
+DISTILL_AND_TRAD_DEP="$(afterok "$FEATURE_ID" "$RELATION_ID" "$RESPONSE_ID" "$TRADITIONAL_ID")"
 
-# submit_job ept_relation "$DISTILL_AND_TRAD_DEP"
-# EPT_RELATION_ID="$LAST_JOB_ID"
+submit_job ept_student "$DISTILL_AND_TRAD_DEP"
+EPT_STUDENT_ID="$LAST_JOB_ID"
 
-# submit_job ept_response "$DISTILL_AND_TRAD_DEP"
-# EPT_RESPONSE_ID="$LAST_JOB_ID"
+submit_job ept_teacher "$(afterok "$EPT_STUDENT_ID")"
+EPT_TEACHER_ID="$LAST_JOB_ID"
 
-# submit_job ept_llama8b_student "$DISTILL_AND_TRAD_DEP"
-# EPT_LLAMA8B_ID="$LAST_JOB_ID"
+submit_job ept_feature "$(afterok "$EPT_TEACHER_ID")"
+EPT_FEATURE_ID="$LAST_JOB_ID"
 
-# submit_job ept_llama70b_teacher "$DISTILL_AND_TRAD_DEP"
-# EPT_LLAMA70B_ID="$LAST_JOB_ID"
+submit_job ept_relation "$(afterok "$EPT_FEATURE_ID")"
+EPT_RELATION_ID="$LAST_JOB_ID"
 
-# submit_job ept_trad_student "$DISTILL_AND_TRAD_DEP"
-# EPT_TRAD_ID="$LAST_JOB_ID"
+submit_job ept_response "$(afterok "$EPT_RELATION_ID")"
+EPT_RESPONSE_ID="$LAST_JOB_ID"
 
-# submit_job hardness_submitter "$(afterok "$EPT_FEATURE_ID" "$EPT_RELATION_ID" "$EPT_RESPONSE_ID" "$EPT_LLAMA8B_ID" "$EPT_LLAMA70B_ID" "$EPT_TRAD_ID")"
-# HARNESS_ID="$LAST_JOB_ID"
+submit_job ept_trad_student "$(afterok "$EPT_RESPONSE_ID")"
+EPT_TRAD_ID="$LAST_JOB_ID"
+
+submit_job hardness_submitter "$(afterok "$EPT_FEATURE_ID" "$EPT_RELATION_ID" "$EPT_RESPONSE_ID" "$EPT_TRAD_ID")"
+HARNESS_ID="$LAST_JOB_ID"
+
+submit_job traditional_eval "$(afterok "$HARNESS_ID")"
+TRADITIONAL_EVAL="$LAST_JOB_ID"
+
+submit_job teacher_harness "$(afterok "$TRADITIONAL_EVAL")"
+TEACHER_HARNESS="$LAST_JOB_ID"
+
+submit_job student_harness "$(afterok "$TEACHER_HARNESS")"
+STUDENT_HARNESS="$LAST_JOB_ID"
 
 cat <<SUMMARY
 [SUMMARY]
   env=$ENV_ID
-  shards=$SHARDS_ID
+  build_shards=$SHARDS_ID
+  warm_hf_cache=$WARM_HF_CACHE_ID
   feature_cache=$FEATURE_CACHE_ID
   relation_cache=$RELATION_CACHE_ID
   response_cache=$RESPONSE_CACHE_ID
-  traditional=$TRADITIONAL_ID
-  feature=$FEATURE_ID
-  relation=$RELATION_ID
-  response=$RESPONSE_ID
+  feature_kd=$FEATURE_ID
+  relation_kd=$RELATION_ID
+  response_kd=$RESPONSE_ID
+  traditional_sft=$TRADITIONAL_ID
+  ept_student=$EPT_STUDENT_ID
+  ept_teacher=$EPT_TEACHER_ID
+  ept_feature=$EPT_FEATURE_ID
+  ept_relation=$EPT_RELATION_ID
+  ept_response=$EPT_RESPONSE_ID
+  ept_traditional=$EPT_TRAD_ID
+  harness_submitter=$HARNESS_ID
+  traditional_eval=$TRADITIONAL_EVAL
+  teacher_harness=$TEACHER_HARNESS
+  student_harness=$STUDENT_HARNESS
+
+[OUTPUTS]
+  ept_student=results/${SAFE_STUDENT_NAME}/BASE/EPT/ept_base<array_task>.json
+  ept_teacher=results/${SAFE_TEACHER_NAME}/BASE/EPT/ept_base<array_task>.json
+  ept_feature=results/${SAFE_STUDENT_NAME}/feature/<model_number>/EPT/ept_repeat<repeat>.json
+  ept_relation=results/${SAFE_STUDENT_NAME}/relation/<model_number>/EPT/ept_repeat<repeat>.json
+  ept_response=results/${SAFE_STUDENT_NAME}/response/<model_number>/EPT/ept_repeat<repeat>.json
+  ept_traditional=results/${SAFE_STUDENT_NAME}/traditional/<array_task>/EPT/ept_traditional_<array_task>.json
 SUMMARY
-
-  # ept_feature=$EPT_FEATURE_ID
-  # ept_relation=$EPT_RELATION_ID
-  # ept_response=$EPT_RESPONSE_ID
-  # ept_llama8b_student=$EPT_LLAMA8B_ID
-  # ept_llama70b_teacher=$EPT_LLAMA70B_ID
-  # ept_trad_student=$EPT_TRAD_ID
-  # harness=$HARNESS_ID
-
-  #sbatch --export=ALL,TARGET=repacss,TEACHER=meta-llama/Meta-Llama-3.1-70B,STUDENT=meta-llama/Meta-Llama-3.1-8B submit_h100.sh
