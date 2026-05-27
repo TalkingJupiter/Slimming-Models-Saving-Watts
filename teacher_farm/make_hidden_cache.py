@@ -81,6 +81,14 @@ def read_jsonl_shard(path, shard_index: int, num_shards: int):
             record_idx += 1
 
 
+def default_hf_cache_dir() -> str:
+    if os.environ.get("HF_HUB_CACHE"):
+        return os.environ["HF_HUB_CACHE"]
+    if os.environ.get("HF_HOME"):
+        return os.path.join(os.environ["HF_HOME"], "hub")
+    return os.path.join(ROOT_DIR, ".hf_cache", "hub")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--model', required=True)
@@ -100,6 +108,10 @@ def main():
     ap.add_argument('--telemetry', action='store_true')
     ap.add_argument('--telemetry_output', type=str, default="results/cache/telemetry/feature/telemetry.jsonl")
     ap.add_argument('--telemetry_interval', type=float, default=1.0)
+    ap.add_argument('--cache_dir', type=str, default=None,
+                    help='Hugging Face model cache directory; defaults to HF_HUB_CACHE/HF_HOME or repo-local .hf_cache')
+    ap.add_argument('--local_files_only', action='store_true',
+                    help='Load only from the local Hugging Face cache; do not download during cache generation')
     args = ap.parse_args()
 
     if args.num_shards < 1:
@@ -108,6 +120,11 @@ def main():
         raise ValueError("--shard_index must satisfy 0 <= shard_index < num_shards")
 
     os.makedirs(args.out_dir, exist_ok=True)
+
+    if args.cache_dir is None:
+        args.cache_dir = default_hf_cache_dir()
+    os.makedirs(args.cache_dir, exist_ok=True)
+    print(f"[INFO] Hugging Face cache: {args.cache_dir}")
 
     # --- dtype parsing
     dmap = {
@@ -119,7 +136,7 @@ def main():
 
     # --- tokenizer
     print("[INFO] loading tokenizer...")
-    tok = AutoTokenizer.from_pretrained(args.model, use_fast=True)
+    tok = AutoTokenizer.from_pretrained(args.model, use_fast=True, cache_dir=args.cache_dir, local_files_only=args.local_files_only)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
@@ -128,8 +145,10 @@ def main():
     print("[INFO] Loading model...")
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
-        torch_dtype=torch_dtype,
+        dtype=torch_dtype,
         device_map='auto',
+        cache_dir=args.cache_dir,
+        local_files_only=args.local_files_only,
     )
     model.eval()
     # Avoid KV-cache to save memory
