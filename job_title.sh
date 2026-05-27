@@ -20,7 +20,7 @@ if [[ "$TARGET" == "repacss" ]]; then
   echo "Target entered as repacss"
   CPU="zen4"
   GPU="h100"
-  PROCS_PER_GPU="${PROCS_PER_GPU:-2}"
+  PROCS_PER_GPU="${PROCS_PER_GPU:-1}"
 elif [[ "$TARGET" == "hpcc" || "$TARGET" == "hpcc_a100" ]]; then
   echo "Target entered as hpcc_a100"
   TARGET="hpcc"
@@ -60,6 +60,21 @@ case "$TARGET:$JOB_KIND" in
     ERROR="logs/env_setup/%x_%j.err"
     ;;
 
+
+  repacss:warm_hf_cache)
+    JOB_NAME="warm_hf_cache_${SAFE_TEACHER_NAME}"
+    PARTITION=$CPU
+    NODES="1"
+    GPUS_PER_NODE="0"
+    CPUS_PER_TASK="4"
+    MEM="64G"
+    TIME="12:00:00"
+    JOB_SCRIPT="scripts/warm_hf_cache.sh"
+
+    OUTPUT="logs/hf_cache/%x_%j.out"
+    ERROR="logs/hf_cache/%x_%j.err"
+    ;;
+
   repacss:build_shards)
     JOB_NAME="build_shards"
     PARTITION=$CPU
@@ -80,7 +95,7 @@ case "$TARGET:$JOB_KIND" in
   NODES="1"
   GPUS_PER_NODE="4"
   CPUS_PER_TASK="64"
-  MEM="128G"
+  MEM="256G"
   TIME="48:00:00"
   JOB_SCRIPT="scripts/build_feature_cache.sh"
   GRES_ARGS=(--gpus-per-node=4)
@@ -103,7 +118,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="4"
     CPUS_PER_TASK="64"
-    MEM="128G"
+    MEM="256G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/build_relation_cache.sh"
     GRES_ARGS=(--gpus-per-node=4)
@@ -126,7 +141,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="4"
     CPUS_PER_TASK="64"
-    MEM="128G"
+    MEM="256G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/build_response_cache.sh"
     GRES_ARGS=(--gpus-per-node=4)
@@ -149,7 +164,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="4"
     CPUS_PER_TASK="16"
-    MEM="128G"
+    MEM="256G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/run_feature_based_single_node.sh"
 
@@ -171,7 +186,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="4"
     CPUS_PER_TASK="16"
-    MEM="128G"
+    MEM="256G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/run_relation_based_single_node.sh"
 
@@ -193,7 +208,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="4"
     CPUS_PER_TASK="16"
-    MEM="128G"
+    MEM="256G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/run_response_based_single_node.sh"
 
@@ -215,7 +230,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="1"
     CPUS_PER_TASK="6"
-    MEM="64G"
+    MEM="256G"
     TIME="48:00:00"
     JOB_SCRIPT="traditional-model/slurm/run_sft.sh"
 
@@ -237,10 +252,11 @@ case "$TARGET:$JOB_KIND" in
     JOB_SCRIPT="eval/ept/ept_feature.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
+    ARRAY_ARGS=(--array=0-24)
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/ept/ept_feature_%x_%j.out"
-    ERROR="logs/eval/ept/ept_feature_%x_%j.err"
+    OUTPUT="logs/eval/ept/ept_feature_%x_%A_%a.out"
+    ERROR="logs/eval/ept/ept_feature_%x_%A_%a.err"
     ;;
 
   repacss:ept_relation)
@@ -254,10 +270,11 @@ case "$TARGET:$JOB_KIND" in
     JOB_SCRIPT="eval/ept/ept_relation.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
+    ARRAY_ARGS=(--array=0-24)
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/ept/ept_relation_%x_%j.out"
-    ERROR="logs/eval/ept/ept_relation_%x_%j.err"
+    OUTPUT="logs/eval/ept/ept_relation_%x_%A_%a.out"
+    ERROR="logs/eval/ept/ept_relation_%x_%A_%a.err"
     ;; 
 
   repacss:ept_response)
@@ -271,44 +288,47 @@ case "$TARGET:$JOB_KIND" in
     JOB_SCRIPT="eval/ept/ept_response.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
+    ARRAY_ARGS=(--array=0-24)
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/ept/ept_response_%x_%j.out"
-    ERROR="logs/eval/ept/ept_response_%x_%j.err"
+    OUTPUT="logs/eval/ept/ept_response_%x_%A_%a.out"
+    ERROR="logs/eval/ept/ept_response_%x_%A_%a.err"
     ;; 
 
-  repacss:ept_llama8b_student)
-    JOB_NAME="ept_llama8b_base_h100"
+  repacss:ept_student)
+    JOB_NAME="ept_${STUDENT}_base_h100"
     PARTITION=$GPU
     NODES="1"
     GPUS_PER_NODE="4"
     CPUS_PER_TASK="16"
     MEM="24G"
     TIME="48:00:00"
-    JOB_SCRIPT="eval/ept/ept_Llama8B_student.sh"
+    JOB_SCRIPT="eval/ept/ept_student.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
+    ARRAY_ARGS=(--array=0-4)
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/ept/ept_llama8B_base_%x_%j.out"
-    ERROR="logs/eval/ept/ept_llama8B_base_%x_%j.err"
+    OUTPUT="logs/eval/ept/ept_${SAFE_STUDENT_NAME}_base_%x_%j.out"
+    ERROR="logs/eval/ept/ept_${SAFE_STUDENT_NAME}_base_%x_%j.err"
     ;; 
 
-  repacss:ept_llama70b_teacher)
-    JOB_NAME="ept_llama70b_base_h100"
+  repacss:ept_teacher)
+    JOB_NAME="ept_${TEACHER}_base_h100"
     PARTITION=$GPU
     NODES="1"
     GPUS_PER_NODE="4"
     CPUS_PER_TASK="16"
     MEM="24G"
     TIME="48:00:00"
-    JOB_SCRIPT="eval/ept/ept_Llama70B_teacher.sh"
+    JOB_SCRIPT="eval/ept/ept_teacher.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
+    ARRAY_ARGS=(--array=0-4)
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/ept/ept_llama70B_base_%x_%j.out"
-    ERROR="logs/eval/ept/ept_llama70B_base_%x_%j.err"
+    OUTPUT="logs/eval/ept/ept_${SAFE_TEACHER_NAME}_base_%x_%j.out"
+    ERROR="logs/eval/ept/ept_${SAFE_TEACHER_NAME}_base_%x_%j.err"
     ;; 
 
   repacss:ept_trad_student)
@@ -322,10 +342,11 @@ case "$TARGET:$JOB_KIND" in
     JOB_SCRIPT="eval/ept/ept_Traditional_student.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
+    ARRAY_ARGS=(--array=0-4)
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/ept/ept_trad_student_sft_%x_%j.out"
-    ERROR="logs/eval/ept/ept_trad_student_sft_%x_%j.err"
+    OUTPUT="logs/eval/ept/ept_trad_student_sft_%x_%A_%a.out"
+    ERROR="logs/eval/ept/ept_trad_student_sft_%x_%A_%a.err"
     ;; 
 
   repacss:hardness_submitter)
@@ -338,7 +359,6 @@ case "$TARGET:$JOB_KIND" in
     TIME="00:04:00"
     JOB_SCRIPT="eval/hardness_submitter.sh"
 
-    GRES_ARGS=(--gpus-per-node=0)
     EXTRA_SBATCH_ARGS=()
 
     OUTPUT="logs/eval/harness_submission_%x_%j.out"
@@ -346,7 +366,7 @@ case "$TARGET:$JOB_KIND" in
     ;;
   
   repacss:traditional_eval)
-    JOB_NAME="Traditional_model_harness"
+    JOB_NAME="Traditional_${SAFE_STUDENT_NAME}_harness"
     PARTITION=$GPU
     NODES="1"
     GPUS_PER_NODE="1"
@@ -356,8 +376,36 @@ case "$TARGET:$JOB_KIND" in
     JOB_SCRIPT="traditional-model/slurm/eval_8B_submitter.sh"
     GRES_ARGS=(--gpus-per-node=1)
     ARRAY_ARGS=(--array=0-4)
-    OUTPUT=logs/eval/$SAFE_STUDENT_NAME/traditional_model/%x_%A_%a.out
-    ERROR=logs/eval/$SAFE_STUDENT_NAME/traditional_model/%x_%A_%a.err
+    OUTPUT="logs/eval/$SAFE_STUDENT_NAME/traditional_model/%x_%A_%a.out"
+    ERROR="logs/eval/$SAFE_STUDENT_NAME/traditional_model/%x_%A_%a.err"
+  ;;
+
+  repacss:teacher_harness)
+    JOB_NAME="base_${SAFE_TEACHER_NAME}_harness"
+    PARTITION=$GPU
+    NODES="1"
+    GPUS_PER_NODE="1"
+    CPUS_PER_TASK="6"
+    MEM="32G"
+    TIME="48:00:00"
+    JOB_SCRIPT="Base/Teacher_harness.sh"
+    GRES_ARGS=(--gpus-per-node=1)
+    OUTPUT="logs/eval/base_${SAFE_TEACHER_NAME}/%x_%A_%a.out"
+    ERROR="logs/eval/base_${SAFE_TEACHER_NAME}/%x_%A_%a.err"
+  ;;
+
+  repacss:student_harness)
+    JOB_NAME="base_${SAFE_STUDENT_NAME}_harness"
+    PARTITION=$GPU
+    NODES="1"
+    GPUS_PER_NODE="1"
+    CPUS_PER_TASK="6"
+    MEM="32G"
+    TIME="48:00:00"
+    JOB_SCRIPT="Base/Student_harness.sh"
+    GRES_ARGS=(--gpus-per-node=1)
+    OUTPUT="logs/eval/base_${SAFE_STUDENT_NAME}/%x_%A_%a.out"
+    ERROR="logs/eval/base_${SAFE_STUDENT_NAME}/%x_%A_%a.err"
   ;;
 
 
