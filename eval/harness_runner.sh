@@ -5,9 +5,9 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=32G
-#SBATCH --time=60:00:00
-#SBATCH --output=eval/student_runner/logs/%x_%j.out
-#SBATCH --error=eval/student_runner/logs/%x_%j.err
+#SBATCH --time=48:00:00
+#SBATCH --output=logs/eval/student_runner/%x_%j.out
+#SBATCH --error=logs/eval/student_runner/%x_%j.err
 
 
 
