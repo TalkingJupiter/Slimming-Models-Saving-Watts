@@ -20,6 +20,11 @@ from typing import Any, Dict, Optional, cast
 import torch
 from accelerate import Accelerator
 from torch.optim import AdamW
+
+try:
+    import bitsandbytes as bnb
+except ImportError:  # pragma: no cover
+    bnb = None  # type: ignore[assignment]
 from torch.utils.data import DataLoader, Dataset as TorchDataset
 
 from transformers import (
@@ -100,6 +105,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_length", type=int, default=2048)
     parser.add_argument("--weight_decay", type=float, default=0.01)
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
+    parser.add_argument("--optimizer", choices=["adamw_8bit", "adamw_torch"], default="adamw_8bit")
+    parser.add_argument("--mixed_precision", choices=["no", "fp16", "bf16"], default="bf16")
+    parser.add_argument("--gradient_checkpointing", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--log_every", type=int, default=50)
     parser.add_argument("--save_every", type=int, default=1000)
     parser.add_argument("--telemetry", action="store_true")
@@ -138,7 +146,7 @@ def save_checkpoint(
 def main() -> None:
     args = parse_args()
 
-    accelerator = Accelerator()
+    accelerator = Accelerator(mixed_precision=None if args.mixed_precision == "no" else args.mixed_precision)
     accelerator.print("==== train_sft: args ====")
     accelerator.print(args)
     accelerator.print("Loading tokenizer and model...")
@@ -149,9 +157,12 @@ def main() -> None:
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name,
-        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+        dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
     )
     model.config.pad_token_id = tokenizer.pad_token_id
+    model.config.use_cache = False
+    if args.gradient_checkpointing:
+        model.gradient_checkpointing_enable()
 
     accelerator.print("Loading dataset shards...")
     dataset_hf: HFDataset = load_sharded_dataset(args.shards_file)  # type: ignore[assignment]
@@ -185,7 +196,12 @@ def main() -> None:
             "weight_decay": 0.0,
         },
     ]
-    optimizer = AdamW(grouped_params, lr=args.lr, betas=(0.9, 0.95), eps=1e-8)
+    if args.optimizer == "adamw_8bit":
+        if bnb is None:
+            raise ImportError("--optimizer adamw_8bit requires bitsandbytes to be installed")
+        optimizer = bnb.optim.AdamW8bit(grouped_params, lr=args.lr, betas=(0.9, 0.95), eps=1e-8)
+    else:
+        optimizer = AdamW(grouped_params, lr=args.lr, betas=(0.9, 0.95), eps=1e-8, foreach=False)
 
     steps_per_epoch = max(1, math.ceil(len(dataloader) / args.grad_accum))
     if args.max_train_steps > 0:
@@ -218,7 +234,7 @@ def main() -> None:
 
     accelerator.print("Starting training...")
     global_step = 0
-    optimizer.zero_grad()
+    optimizer.zero_grad(set_to_none=True)
 
     try:
         for epoch in range(num_epochs):
@@ -239,7 +255,7 @@ def main() -> None:
 
                 optimizer.step()
                 lr_scheduler.step()
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
                 global_step += 1
 
                 if global_step % args.log_every == 0 or global_step == 1:
