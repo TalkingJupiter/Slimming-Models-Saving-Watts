@@ -4,6 +4,7 @@ from typing import List, Dict, Optional, Union, Any, cast
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
 
 from ept_monitor import EnergyMonitor
 from ept_data import load_dolly_prompts
@@ -16,20 +17,26 @@ def load_prompts_from_txt(path: str) -> List[str]:
 def run_ept_benchmark(
     model_name_or_path: str,
     prompts: List[str],
+    base_model_name_or_path: Optional[str] = None,
+    adapter_name_or_path: Optional[str] = None,
     max_new_tokens: int = 64,
     batch_size: int = 4,
     device: str = "cuda",
     gpu_indices: Optional[List[int]] = None,
 ) -> Dict[str, float]:
-    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    tokenizer_source = base_model_name_or_path or model_name_or_path
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_source)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    model_source = base_model_name_or_path or model_name_or_path
     model = AutoModelForCausalLM.from_pretrained(
-        model_name_or_path,
+        model_source,
         torch_dtype=torch.bfloat16 if torch.cuda.is_available() else None,
         device_map="auto",
     )
+    if adapter_name_or_path is not None:
+        model = PeftModel.from_pretrained(model, adapter_name_or_path)
     model.eval()
 
     total_input_tokens = 0
@@ -90,6 +97,10 @@ def main():
 
     parser = argparse.ArgumentParser(description="Run EPT benchmark for a HF model.")
     parser.add_argument("--model", required=True, help="Model name or path")
+    parser.add_argument("--base-model", type=str, default=None,
+                        help="Base model to load before applying --adapter")
+    parser.add_argument("--adapter", type=str, default=None,
+                        help="PEFT adapter path to apply on top of --base-model")
     parser.add_argument("--prompts", type=str, default=None,
                         help="Path to .txt file with one prompt per line")
     parser.add_argument("--use-dolly", action="store_true",
@@ -125,6 +136,8 @@ def main():
     results = run_ept_benchmark(
         model_name_or_path=args.model,
         prompts=prompts,
+        base_model_name_or_path=args.base_model,
+        adapter_name_or_path=args.adapter,
         max_new_tokens=args.max_new_tokens,
         batch_size=args.batch_size,
         gpu_indices=gpu_indices,

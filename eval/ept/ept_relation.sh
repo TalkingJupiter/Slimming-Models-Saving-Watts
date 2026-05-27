@@ -1,41 +1,38 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=ept_relation_students
-#SBATCH --partition=h100
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=24G
-#SBATCH --time=96:00:00
-#SBATCH --output=eval/ept/benchmark/logs/%x_%j.out
-#SBATCH --error=eval/ept/benchmark/logs/%x_%j.err
 
 set -euo pipefail
 
-# -----------------------------------------------------
-# Manual Configuration (EDIT THESE DIRECTLY)
-# -----------------------------------------------------
+STUDENT_MODEL=${STUDENT:-"meta-llama/Llama-3.1-8B"}
+SAFE_STUDENT_NAME=${SAFE_STUDENT_NAME:-${STUDENT_MODEL//\//_}}
 
-RELATION_MODELS=(
-    "serialization_dir/relation/20251113_2057_RelB_1n"
-    "serialization_dir/relation/20251113_2108_RelB_1n"
-    "serialization_dir/relation/20251113_2121_RelB_1n"
-    "serialization_dir/relation/20251113_2131_RelB_1n"
-    "serialization_dir/relation/20251113_2140_RelB_1n"
-)
+RELATION_MODELS=()
+if [[ -d "serialization_dir/${SAFE_STUDENT_NAME}/relation" ]]; then
+    mapfile -t RELATION_MODELS < <(
+        find "serialization_dir/${SAFE_STUDENT_NAME}/relation" -mindepth 1 -maxdepth 1 -type d | sort
+    )
+fi
+
+if [[ ${#RELATION_MODELS[@]} -eq 0 ]]; then
+    echo "[WARN] No relation KD models found under serialization_dir/${SAFE_STUDENT_NAME}/relation"
+    exit 0
+fi
 
 NUM_PROMPTS=100
 BATCH_SIZE=4
+REPEATS=${EPT_REPEATS:-5}
 GPU_INDEX=0
 
-OUTDIR_ROOT="eval/ept/benchmark"
-OUTDIR="${OUTDIR_ROOT}/results/relation_${SLURM_JOB_ID}"
+JOB_GROUP_ID=${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-manual}}
+OUTDIR="results/${SAFE_STUDENT_NAME}/relation/"
 
-mkdir -p "$OUTDIR_ROOT" "$OUTDIR" logs results || true
+mkdir -p "$OUTDIR" logs || true
 
 echo "===================================================="
 echo "   EPT-Bench: Energy-Per-Token — RELATION STUDENTS"
 echo "===================================================="
 echo "[EPT] Prompt count   : $NUM_PROMPTS"
 echo "[EPT] Batch size     : $BATCH_SIZE"
+echo "[EPT] Repeats/model  : $REPEATS"
 echo "[EPT] GPU index      : $GPU_INDEX"
 echo "[EPT] Output dir     : $OUTDIR"
 echo "===================================================="
@@ -45,6 +42,9 @@ echo "===================================================="
 # -----------------------------------------------------
 source ~/.bashrc || true
 conda activate kd || true
+source scripts/_env_single_node.sh
+STUDENT_MODEL_SOURCE=$(resolve_hf_model "$STUDENT_MODEL")
+echo "[EPT] Student source : $STUDENT_MODEL_SOURCE"
 
 # -----------------------------------------------------
 # Helper
@@ -52,41 +52,48 @@ conda activate kd || true
 run_ept_for_model () {
     local KD_LABEL="$1"     # REL
     local INDEX="$2"        # 1..5
-    local MODEL="$3"
+    local REPEAT="$3"       # 1..REPEATS
+    local MODEL="$4"
 
-    local BASENAME
-    BASENAME=$(basename "$MODEL")
-    local OUTFILE="${OUTDIR}/ept_${KD_LABEL}_${INDEX}_${BASENAME}_${SLURM_JOB_ID}.json"
+    local OUTFILE="${OUTDIR}/${INDEX}/EPT/ept_repeat${REPEAT}.json"
 
     echo "----------------------------------------------------"
     echo "[EPT] KD Type       : ${KD_LABEL}"
     echo "[EPT] Model Index   : ${INDEX}"
+    echo "[EPT] Repeat        : ${REPEAT}/${REPEATS}"
     echo "[EPT] Model Path    : ${MODEL}"
     echo "[EPT] Output File   : ${OUTFILE}"
     echo "----------------------------------------------------"
 
     python eval/ept/benchmark/run_ept_benchmark.py \
         --model "$MODEL" \
+        --base-model "$STUDENT_MODEL_SOURCE" \
+        --adapter "$MODEL" \
         --use-dolly \
         --num-prompts "$NUM_PROMPTS" \
         --batch-size "$BATCH_SIZE" \
         --gpu-indices "$GPU_INDEX" \
         --out "$OUTFILE"
 
-    echo "[EPT] DONE: ${KD_LABEL} model #${INDEX} (${MODEL})"
+    echo "[EPT] DONE: ${KD_LABEL} model #${INDEX}, repeat ${REPEAT}/${REPEATS} (${MODEL})"
 }
 
 # -----------------------------------------------------
-# Run Relation-based KD models
+# Run one Relation-based KD model/repeat per Slurm array task
 # -----------------------------------------------------
 echo "================ RELATION-BASED KD (REL) =============="
-i=1
-for MODEL in "${RELATION_MODELS[@]}"; do
-    run_ept_for_model "REL" "$i" "$MODEL"
-    i=$((i + 1))
-done
+TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
+MODEL_INDEX=$((TASK_ID / REPEATS))
+REPEAT_INDEX=$((TASK_ID % REPEATS + 1))
+
+if [[ "$MODEL_INDEX" -ge "${#RELATION_MODELS[@]}" ]]; then
+    echo "[WARN] No relation KD model for SLURM_ARRAY_TASK_ID=$TASK_ID"
+    exit 0
+fi
+
+run_ept_for_model "REL" "$((MODEL_INDEX + 1))" "$REPEAT_INDEX" "${RELATION_MODELS[$MODEL_INDEX]}"
 
 echo "===================================================="
-echo "[EPT] All RELATION KD models have been processed."
+echo "[EPT] RELATION KD array task complete."
 echo "[EPT] Results directory: ${OUTDIR}"
 echo "===================================================="
