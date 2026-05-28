@@ -24,4 +24,7 @@ Base/base_ckpt/
 Base/eval/
 eval/student_runner/
 telemetry/
-traditional-model/
+traditional_student/
+retired*
+.hf_cache/
+.hf_models/

@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=ept_8B_student
-#SBATCH --partition=h100
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=24G
-#SBATCH --time=96:00:00
-#SBATCH --output=traditional-model/logs/%x_%j.out
-#SBATCH --error=traditional-model/logs/%x_%j.err
 
 set -euo pipefail
 
@@ -14,18 +6,19 @@ set -euo pipefail
 # Manual Configuration (EDIT THESE DIRECTLY)
 # -----------------------------------------------------
 
-MODEL="./traditional-model/checkpoints/epoch_0"   # Model to benchmark
+MODEL=${TEACHER:-meta-llama/Meta-Llama-3.1-70B}   # Model to benchmark
 NUM_PROMPTS=100                             # Number of Dolly prompts
-BATCH_SIZE=4                                # Batch size for generation
+BATCH_SIZE=2                                # Batch size for generation
 GPU_INDEX=0                                 # GPU index to monitor
 
 # Output location
-OUTFILE="traditional-model/ept/ept_8B_trad_${SLURM_JOB_ID}.json"
-OUTDIR="$(dirname "$OUTFILE")"
+SAFE_MODEL=${MODEL//\//_}
+OUTFILE="results/${SAFE_MODEL}/BASE/EPT/ept_base${SLURM_ARRAY_TASK_ID}.json"
+
 # -----------------------------------------------------
 # Initialization
 # -----------------------------------------------------
-mkdir -p eval/ept/benchmark traditional-model/logs traditional-model/results "$OUTDIR" || true
+mkdir -p logs results/${SAFE_MODEL}/BASE/EPT || true
 
 echo "===================================================="
 echo "           EPT-Bench: Energy-Per-Token"
@@ -43,12 +36,15 @@ echo "----------------------------------------------------"
 # -----------------------------------------------------
 source ~/.bashrc || true
 conda activate kd || true
+source scripts/_env_single_node.sh
+MODEL_SOURCE=$(resolve_hf_model "$MODEL")
+echo "[EPT] Model source   : $MODEL_SOURCE"
 
 # -----------------------------------------------------
 # Run Benchmark
 # -----------------------------------------------------
-python ./eval/ept/benchmark/run_ept_benchmark.py \
-  --model "$MODEL" \
+python eval/ept/benchmark/run_ept_benchmark.py \
+  --model "$MODEL_SOURCE" \
   --use-dolly \
   --num-prompts "$NUM_PROMPTS" \
   --batch-size "$BATCH_SIZE" \

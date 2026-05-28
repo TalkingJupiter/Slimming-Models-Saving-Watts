@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=kd_build_shards
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
-#SBATCH --partition=zen4
-#SBATCH --time=06:00:00
-#SBATCH --output=logs/shards/%x_%j.out
-#SBATCH --error=logs/shards/%x_%j.err
-
 set -euo pipefail
 source scripts/_env_single_node.sh   # creates/activates env & installs reqs
 

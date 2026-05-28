@@ -2,11 +2,12 @@ import os
 # prevent any accidental DeepSpeed path during unwrap/saving
 os.environ.setdefault("ACCELERATE_USE_DEEPSPEED", "false")
 
-import argparse, time, signal, pathlib
+import argparse, datetime, json, signal, pathlib, threading, time
 import torch
 from torch.utils.data import DataLoader, IterableDataset
 from accelerate import Accelerator, DistributedDataParallelKwargs
 from transformers import get_cosine_schedule_with_warmup
+from typing import Any, Optional
 
 from kd.models import load_student
 from kd.kd_rb import response_kd_loss
@@ -16,6 +17,49 @@ from kd.datasets import (
     RBTopKIterableDataset, FBDataset, RelBDataset,
     collate_rb, collate_pad
 )
+import monitor
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover
+    ZoneInfo = None  # type: ignore[assignment]
+
+
+class TelemetrySampler:
+    def __init__(self, output_path: str, phase: str, interval: float = 1.0) -> None:
+        self.output_path = os.path.abspath(output_path)
+        self.phase = phase
+        self.interval = interval
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._tz = ZoneInfo("America/Chicago") if ZoneInfo is not None else None
+
+    def start(self) -> None:
+        out_dir = os.path.dirname(self.output_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if self._thread is None:
+            return
+        self._stop_event.set()
+        self._thread.join()
+
+    def _run(self) -> None:
+        with open(self.output_path, "a", encoding="utf-8") as f:
+            while not self._stop_event.is_set():
+                now = datetime.datetime.now(self._tz) if self._tz else datetime.datetime.now()
+                entry: dict[str, Any] = {
+                    "timestamp": now.isoformat(),
+                    "gpus": monitor.get_gpu_info(),
+                    "cpu": monitor.get_cpu_info(),
+                    "phase": self.phase,
+                }
+                f.write(json.dumps(entry) + "\n")
+                f.flush()
+                time.sleep(self.interval)
 
 # ------------------------- Arg parsing -------------------------
 def parse_args():
@@ -55,6 +99,11 @@ def parse_args():
     ap.add_argument('--save_every', type=int, default=0, help='Steps between checkpoints (0=off)')
     ap.add_argument('--resume',     type=str, default='auto', choices=['auto','none','path'])
     ap.add_argument('--resume_path', type=str, default='')
+
+    # Telemetry
+    ap.add_argument('--telemetry', action='store_true')
+    ap.add_argument('--telemetry_output', type=str, default='logs/telemetry/kd_train.jsonl')
+    ap.add_argument('--telemetry_interval', type=float, default=1.0)
     return ap.parse_args()
 
 # ------------------------- Checkpoint utils -------------------------
@@ -256,93 +305,108 @@ def main():
         pin_memory=True
     )
 
+    sampler = None
+    if args.telemetry and accelerator.is_main_process:
+        sampler = TelemetrySampler(
+            args.telemetry_output,
+            phase=f"kd_{args.kd_mode}",
+            interval=args.telemetry_interval,
+        )
+        print(f"[Telemetry] Logging to {args.telemetry_output}")
+        sampler.start()
+
     model.train()
     projector = None
     t0 = time.time()
     total_tokens = 0
 
-    for epoch in range(args.epochs):
-        for batch in loader:
+    try:
+        for epoch in range(args.epochs):
+            for batch in loader:
+                if step >= args.max_steps:
+                    break
+
+                input_ids = batch['input_ids'].to(device, non_blocking=True)
+                attn_mask = batch['attn_mask'].to(device, non_blocking=True)
+
+                if args.kd_mode == 'rb':
+                    with accelerator.autocast():
+                        out = model(input_ids=input_ids, attention_mask=attn_mask, use_cache=False)
+                        s_logits = out.logits[:, :-1, :]
+                        min_len = min(s_logits.size(1), batch['topk_ids'].size(1))
+                        kd = response_kd_loss(
+                            s_logits[:, :min_len, :],
+                            batch['topk_ids'][:, :min_len, :].to(device, non_blocking=True),
+                            batch['topk_logprobs'][:, :min_len, :].to(device, non_blocking=True),
+                            T=args.rb_temperature
+                        )
+                        loss = kd
+                    token_this = (attn_mask.sum() - input_ids.size(0)).item()
+
+                elif args.kd_mode == 'fb':
+                    with accelerator.autocast():
+                        out = model(input_ids=input_ids, attention_mask=attn_mask,
+                                    use_cache=False, output_hidden_states=True)
+
+                        s_hid = out.hidden_states[args.fb_student_layer]                 # [B,T,Hs]
+                        t_feats = batch['teacher_feats'].to(device, non_blocking=True)   # [B,T,Ht]
+
+                        if projector is None:
+                            projector = LinearProjector(s_hid.size(-1), t_feats.size(-1)).to(device)
+                            projector = accelerator.prepare(projector)
+                            # ensure projector is optimized
+                            optimizer.add_param_group({"params": projector.parameters()})
+
+                        s_proj = projector(s_hid)                                        # [B,T,Ht]
+
+                        # dtype alignment
+                        if t_feats.dtype != s_proj.dtype:
+                            t_feats = t_feats.to(s_proj.dtype)
+
+                        loss = feature_kd_loss(s_proj, t_feats, token_mask=attn_mask)
+
+                        # DDP safety: ensure ALL params/buckets are “seen”
+                        loss = loss + out.logits.mean() * 0.0         # keep forward graph tied
+                        loss = loss + _zero_touch_all_params(model)   # touch every param/bucket
+
+                    token_this = attn_mask.sum().item()
+
+                else:  # relb
+                    with accelerator.autocast():
+                        out = model(input_ids=input_ids, attention_mask=attn_mask, use_cache=False, output_hidden_states=True)
+                        last = out.hidden_states[-1]                # [B, T, H]
+                        mask = attn_mask.unsqueeze(-1)              # [B, T, 1]
+                        pooled = (last * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1)  # [B, H]
+                        t_emb = batch['teacher_embed'].to(device, non_blocking=True)      # [B, H]
+                        loss = relation_kd_loss(
+                            pooled, t_emb,
+                            lambda_dist=args.relb_lambda_dist,
+                            lambda_angle=args.relb_lambda_angle
+                        )
+                    token_this = attn_mask.sum().item()
+
+                optimizer.zero_grad(set_to_none=True)
+                accelerator.backward(loss)
+                optimizer.step()
+                scheduler.step()
+
+                if accelerator.is_main_process and args.save_every > 0 and step > 0 and (step % args.save_every == 0):
+                    _save_ckpt(step, model, tok, optimizer, scheduler, save_dir)
+                    print(f"[ckpt] Saved {save_dir}/ckpt_step{step:07d}")
+
+                total_tokens += token_this
+                step += 1
+                if accelerator.is_main_process and step % 10 == 0:
+                    dt = time.time() - t0
+                    tps = total_tokens / max(dt, 1e-6)
+                    print(f"[step {step}] loss={loss.item():.4f} tokens={int(total_tokens)} tok/s={tps:.1f}")
+
             if step >= args.max_steps:
                 break
-
-            input_ids = batch['input_ids'].to(device, non_blocking=True)
-            attn_mask = batch['attn_mask'].to(device, non_blocking=True)
-
-            if args.kd_mode == 'rb':
-                with accelerator.autocast():
-                    out = model(input_ids=input_ids, attention_mask=attn_mask, use_cache=False)
-                    s_logits = out.logits[:, :-1, :]
-                    min_len = min(s_logits.size(1), batch['topk_ids'].size(1))
-                    kd = response_kd_loss(
-                        s_logits[:, :min_len, :],
-                        batch['topk_ids'][:, :min_len, :].to(device, non_blocking=True),
-                        batch['topk_logprobs'][:, :min_len, :].to(device, non_blocking=True),
-                        T=args.rb_temperature
-                    )
-                    loss = kd
-                token_this = (attn_mask.sum() - input_ids.size(0)).item()
-
-            elif args.kd_mode == 'fb':
-                with accelerator.autocast():
-                    out = model(input_ids=input_ids, attention_mask=attn_mask,
-                                use_cache=False, output_hidden_states=True)
-
-                    s_hid = out.hidden_states[args.fb_student_layer]                 # [B,T,Hs]
-                    t_feats = batch['teacher_feats'].to(device, non_blocking=True)   # [B,T,Ht]
-
-                    if projector is None:
-                        projector = LinearProjector(s_hid.size(-1), t_feats.size(-1)).to(device)
-                        projector = accelerator.prepare(projector)
-                        # ensure projector is optimized
-                        optimizer.add_param_group({"params": projector.parameters()})
-
-                    s_proj = projector(s_hid)                                        # [B,T,Ht]
-
-                    # dtype alignment
-                    if t_feats.dtype != s_proj.dtype:
-                        t_feats = t_feats.to(s_proj.dtype)
-
-                    loss = feature_kd_loss(s_proj, t_feats, token_mask=attn_mask)
-
-                    # DDP safety: ensure ALL params/buckets are “seen”
-                    loss = loss + out.logits.mean() * 0.0         # keep forward graph tied
-                    loss = loss + _zero_touch_all_params(model)   # touch every param/bucket
-
-                token_this = attn_mask.sum().item()
-
-            else:  # relb
-                with accelerator.autocast():
-                    out = model(input_ids=input_ids, attention_mask=attn_mask, use_cache=False, output_hidden_states=True)
-                    last = out.hidden_states[-1]                # [B, T, H]
-                    mask = attn_mask.unsqueeze(-1)              # [B, T, 1]
-                    pooled = (last * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1)  # [B, H]
-                    t_emb = batch['teacher_embed'].to(device, non_blocking=True)      # [B, H]
-                    loss = relation_kd_loss(
-                        pooled, t_emb,
-                        lambda_dist=args.relb_lambda_dist,
-                        lambda_angle=args.relb_lambda_angle
-                    )
-                token_this = attn_mask.sum().item()
-
-            optimizer.zero_grad(set_to_none=True)
-            accelerator.backward(loss)
-            optimizer.step()
-            scheduler.step()
-
-            if accelerator.is_main_process and args.save_every > 0 and step > 0 and (step % args.save_every == 0):
-                _save_ckpt(step, model, tok, optimizer, scheduler, save_dir)
-                print(f"[ckpt] Saved {save_dir}/ckpt_step{step:07d}")
-
-            total_tokens += token_this
-            step += 1
-            if accelerator.is_main_process and step % 10 == 0:
-                dt = time.time() - t0
-                tps = total_tokens / max(dt, 1e-6)
-                print(f"[step {step}] loss={loss.item():.4f} tokens={int(total_tokens)} tok/s={tps:.1f}")
-
-        if step >= args.max_steps:
-            break
+    finally:
+        if sampler is not None:
+            print("[Telemetry] Stopping sampler")
+            sampler.stop()
 
     if accelerator.is_main_process:
         pathlib.Path(args.save_dir).mkdir(parents=True, exist_ok=True)

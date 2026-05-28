@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=env_setup
-#SBATCH --partition=zen4              # CPU partition to run the launcher itself
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=1G
-#SBATCH --time=00:20:00
-#SBATCH --output=logs/env_setup/%x_%j.out
-#SBATCH --error=logs/env_setup/%x_%j.err
-
 
 set -euo pipefail
 
@@ -20,6 +10,8 @@ REQ_FILE="requirements.txt"
 
 # Ensure conda is initialized
 source ~/.bashrc
+
+export PROJECT_ROOT=${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}
 
 if ! conda env list | grep -q "^$ENV_NAME "; then
   echo "[INFO] Conda env '$ENV_NAME' not found. Creating..."
@@ -35,6 +27,49 @@ else
   echo "[INFO] Conda env '$ENV_NAME' exists. Activating..."
   conda activate $ENV_NAME
 fi
+
+# -------------------------------
+# Hugging Face cache
+# -------------------------------
+# Some shared filesystems reject the chmod/lock operations used by
+# huggingface_hub, which shows up as os.fchmod(...): Invalid argument.
+# Use a persistent project-local cache by default so array jobs share one
+# warmed model snapshot. Override HF_HOME/HF_CACHE_ROOT if your cluster has a
+# better persistent scratch filesystem.
+HF_CACHE_ROOT=${HF_CACHE_ROOT:-$PROJECT_ROOT/.hf_cache}
+export HF_HOME=${HF_HOME:-$HF_CACHE_ROOT}
+export HF_HUB_CACHE=${HF_HUB_CACHE:-$HF_HOME/hub}
+export HF_HUB_DISABLE_XET=${HF_HUB_DISABLE_XET:-1}
+export HF_TRANSFER_CONCURRENCY=${HF_TRANSFER_CONCURRENCY:-4}
+mkdir -p "$HF_HOME" "$HF_HUB_CACHE"
+echo "[INFO] HF_HOME: $HF_HOME"
+echo "[INFO] HF_HUB_CACHE: $HF_HUB_CACHE"
+echo "[INFO] HF_TRANSFER_CONCURRENCY: $HF_TRANSFER_CONCURRENCY"
+
+
+safe_hf_model_name() {
+  local model="$1"
+  printf '%s' "${model//\//_}"
+}
+
+resolve_hf_model() {
+  local model="$1"
+  if [[ -z "$model" || -d "$model" ]]; then
+    printf '%s
+' "$model"
+    return
+  fi
+  local safe
+  safe=$(safe_hf_model_name "$model")
+  local local_dir="$PROJECT_ROOT/.hf_models/$safe"
+  if [[ -d "$local_dir" ]]; then
+    printf '%s
+' "$local_dir"
+  else
+    printf '%s
+' "$model"
+  fi
+}
 
 # -------------------------------
 # Node/GPU topology

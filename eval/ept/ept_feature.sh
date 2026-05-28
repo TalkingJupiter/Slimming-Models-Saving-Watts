@@ -1,41 +1,38 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=ept_feature_students
-#SBATCH --partition=h100
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=24G
-#SBATCH --time=96:00:00
-#SBATCH --output=eval/ept/benchmark/logs/%x_%j.out
-#SBATCH --error=eval/ept/benchmark/logs/%x_%j.err
-
 set -euo pipefail
 
-# -----------------------------------------------------
-# Manual Configuration (EDIT THESE DIRECTLY)
-# -----------------------------------------------------
+STUDENT_MODEL=${STUDENT:-"meta-llama/Llama-3.1-8B"}
+SAFE_STUDENT_NAME=${SAFE_STUDENT_NAME:-${STUDENT_MODEL//\//_}}
 
-FEATURE_MODELS=(
-    "serialization_dir/feature/20251113_2357_FB_1n"
-    "serialization_dir/feature/20251114_0017_FB_1n"
-    "serialization_dir/feature/20251114_0042_FB_1n"
-    "serialization_dir/feature/20251114_0107_FB_1n"
-    "serialization_dir/feature/20251114_0127_FB_1n"
-)
+FEATURE_MODELS=()
+if [[ -d "serialization_dir/${SAFE_STUDENT_NAME}/feature" ]]; then
+    mapfile -t FEATURE_MODELS < <(
+        find "serialization_dir/${SAFE_STUDENT_NAME}/feature" -mindepth 1 -maxdepth 1 -type d | sort
+    )
+fi
+
+if [[ ${#FEATURE_MODELS[@]} -eq 0 ]]; then
+    echo "[WARN] No feature KD models found under serialization_dir/${SAFE_STUDENT_NAME}/feature"
+    exit 0
+fi
 
 NUM_PROMPTS=100        # number of Dolly prompts
 BATCH_SIZE=4           # batch size for students
+REPEATS=${EPT_REPEATS:-5}
 GPU_INDEX=0            # GPU index to monitor
 
-OUTDIR_ROOT="eval/ept/benchmark"
-OUTDIR="${OUTDIR_ROOT}/results/feature_${SLURM_JOB_ID}"
+JOB_GROUP_ID=${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-manual}}
+# OUTDIR="results/eval/harness/${SAFE_STUDENT_NAME}/feature_${JOB_GROUP_ID}"
+OUTDIR="results/${SAFE_STUDENT_NAME}/feature/"
 
-mkdir -p "$OUTDIR_ROOT" "$OUTDIR" logs results || true
+mkdir -p "$OUTDIR" logs || true
 
 echo "===================================================="
 echo "   EPT-Bench: Energy-Per-Token — FEATURE STUDENTS"
 echo "===================================================="
 echo "[EPT] Prompt count   : $NUM_PROMPTS"
 echo "[EPT] Batch size     : $BATCH_SIZE"
+echo "[EPT] Repeats/model  : $REPEATS"
 echo "[EPT] GPU index      : $GPU_INDEX"
 echo "[EPT] Output dir     : $OUTDIR"
 echo "===================================================="
@@ -45,6 +42,9 @@ echo "===================================================="
 # -----------------------------------------------------
 source ~/.bashrc || true
 conda activate kd || true
+source scripts/_env_single_node.sh
+STUDENT_MODEL_SOURCE=$(resolve_hf_model "$STUDENT_MODEL")
+echo "[EPT] Student source : $STUDENT_MODEL_SOURCE"
 
 # -----------------------------------------------------
 # Helper: run one model with a KD label and index
@@ -52,41 +52,48 @@ conda activate kd || true
 run_ept_for_model () {
     local KD_LABEL="$1"     # e.g., FB
     local INDEX="$2"        # 1..5
-    local MODEL="$3"
+    local REPEAT="$3"       # 1..REPEATS
+    local MODEL="$4"
 
-    local BASENAME
-    BASENAME=$(basename "$MODEL")
-    local OUTFILE="${OUTDIR}/ept_${KD_LABEL}_${INDEX}_${BASENAME}_${SLURM_JOB_ID}.json"
+    local OUTFILE="${OUTDIR}/${INDEX}/EPT/ept_repeat${REPEAT}.json"
 
     echo "----------------------------------------------------"
     echo "[EPT] KD Type       : ${KD_LABEL}"
     echo "[EPT] Model Index   : ${INDEX}"
+    echo "[EPT] Repeat        : ${REPEAT}/${REPEATS}"
     echo "[EPT] Model Path    : ${MODEL}"
     echo "[EPT] Output File   : ${OUTFILE}"
     echo "----------------------------------------------------"
 
     python eval/ept/benchmark/run_ept_benchmark.py \
         --model "$MODEL" \
+        --base-model "$STUDENT_MODEL_SOURCE" \
+        --adapter "$MODEL" \
         --use-dolly \
         --num-prompts "$NUM_PROMPTS" \
         --batch-size "$BATCH_SIZE" \
         --gpu-indices "$GPU_INDEX" \
         --out "$OUTFILE"
 
-    echo "[EPT] DONE: ${KD_LABEL} model #${INDEX} (${MODEL})"
+    echo "[EPT] DONE: ${KD_LABEL} model #${INDEX}, repeat ${REPEAT}/${REPEATS} (${MODEL})"
 }
 
 # -----------------------------------------------------
-# Run Feature-based KD models
+# Run one Feature-based KD model/repeat per Slurm array task
 # -----------------------------------------------------
 echo "================ FEATURE-BASED KD (FB) =============="
-i=1
-for MODEL in "${FEATURE_MODELS[@]}"; do
-    run_ept_for_model "FB" "$i" "$MODEL"
-    i=$((i + 1))
-done
+TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
+MODEL_INDEX=$((TASK_ID / REPEATS))
+REPEAT_INDEX=$((TASK_ID % REPEATS + 1))
+
+if [[ "$MODEL_INDEX" -ge "${#FEATURE_MODELS[@]}" ]]; then
+    echo "[WARN] No feature KD model for SLURM_ARRAY_TASK_ID=$TASK_ID"
+    exit 0
+fi
+
+run_ept_for_model "FB" "$((MODEL_INDEX + 1))" "$REPEAT_INDEX" "${FEATURE_MODELS[$MODEL_INDEX]}"
 
 echo "===================================================="
-echo "[EPT] All FEATURE KD models have been processed."
+echo "[EPT] FEATURE KD array task complete."
 echo "[EPT] Results directory: ${OUTDIR}"
 echo "===================================================="

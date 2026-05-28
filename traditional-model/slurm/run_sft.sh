@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=baseline_8B_sft
-#SBATCH --partition=h100
-#SBATCH --nodes=1
-#SBATCH --gpus-per-node=1
-#SBATCH --cpus-per-task=6
-#SBATCH --mem=64G
-#SBATCH --time=96:00:00
-#SBATCH --output=traditional-model/logs/sft_%j.out
-#SBATCH --error=traditional-model/logs/sft_%j.err
+
 
 set -euo pipefail
 cd ${SLURM_SUBMIT_DIR:-$PWD}
@@ -22,18 +14,40 @@ echo "CUDA_HOME in job: $CUDA_HOME"
 which nvcc || echo "nvcc not found in PATH"
 
 conda activate kd
+source scripts/_env_single_node.sh
 
-python monitor.py --output traditional-model/telemetry/telemetry_sft.jsonl --interval 1 &
-MONITOR_PID=$!
+export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
 
-accelerate launch traditional-model/train_sft.py \
-  --model_name "meta-llama/Llama-3.1-8B-Instruct" \
-  --shards_file "data/shards.jsonl" \
-  --output_dir "traditional-model/checkpoints/" \
+MODEL_NAME="${MODEL_NAME:-${SAFE_STUDENT_NAME:-traditional_student}}"
+MODEL_ID="${MODEL:-${STUDENT_MODEL:-meta-llama/Llama-3.1-8B-Instruct}}"
+MODEL_SOURCE=$(resolve_hf_model "$MODEL_ID")
+SHARDS_FILE="${SHARDS_FILE:-data/shards.jsonl}"
+ARRAY_TASK_ID="${SLURM_ARRAY_TASK_ID:-0}"
+STUDENT_RUN_NAME="${SAFE_STUDENT_NAME:-$MODEL_NAME}"
+OUTPUT_DIR="${OUT_DIR:-traditional_student/$STUDENT_RUN_NAME/$ARRAY_TASK_ID}"
+# TELEMETRY_OUTPUT="${TELEMETRY_OUTPUT:-results/traditional_student/$STUDENT_RUN_NAME/$ARRAY_TASK_ID/telemetry.json}"
+TELEMETRY_OUTPUT="${TELEMETRY_OUTPUT:-results/$SAFE_STUDENT_NAME/traditional/$ARRAY_TASK_ID/telemetry.json}"
+echo "[INFO] Student model: $MODEL_ID"
+echo "[INFO] Student model source: $MODEL_SOURCE"
+
+accelerate launch \
+  --num_processes=1 \
+  --num_machines=1 \
+  --mixed_precision=bf16 \
+  --dynamo_backend=no \
+  traditional-model/train_sft.py \
+  --model_name "$MODEL_SOURCE" \
+  --shards_file "$SHARDS_FILE" \
+  --output_dir "$OUTPUT_DIR" \
   --batch_size 1 \
   --grad_accum 16 \
   --lr 1e-5 \
-  --num_epochs 1 \
-  --max_length 2048
-
-kill $MONITOR_PID
+  --optimizer adamw_8bit \
+  --mixed_precision bf16 \
+  --gradient_checkpointing \
+  --num_epochs 200 \
+  --max_length 2048 \
+  --save_every 1000 \
+  --telemetry \
+  --telemetry_output "$TELEMETRY_OUTPUT" \
+  --telemetry_interval 1

@@ -1,11 +1,57 @@
-#!/usr/bin/env python3
-import argparse, os, json, math, gc
-from typing import List, Dict, Any
+import argparse, os, json, math, gc, sys, time, datetime, threading
+from typing import List, Dict, Any, Optional
 import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import pyarrow as pa, pyarrow.parquet as pq
 from tqdm import tqdm
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
+
+import monitor #noqa: E402
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None
+
+class TelemetrySampler:
+    def __init__(self, output_path:str, interval: float = 1.0, phase: str = "feature_hidden_cache") -> None:
+        self.output_path = os.path.abspath(output_path)
+        self.interval = interval
+        self.phase = phase
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._tz = ZoneInfo("America/Chicago") if ZoneInfo is not None else None
+
+    def start(self) -> None:
+        out_dir = os.path.dirname(self.output_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+            self._thread = threading.Thread(target=self._run, daemon=True)
+            self._thread.start()
+
+    def stop(self) -> None:
+        if self._thread is None:
+            return
+        self._stop_event.set()
+        self._thread.join()
+    
+    def _run(self) -> None:
+        with open(self.output_path, "a", encoding="utf-8") as f:
+            while not self._stop_event.is_set():
+                now = datetime.datetime.now(self._tz) if self._tz else datetime.datetime.now()
+                entry: Dict[str, Any] = {
+                    "timestamp": now.isoformat(),
+                    "gpus": monitor.get_gpu_info(),
+                    "cpu": monitor.get_cpu_info(),
+                    "phase": self.phase,
+                }
+                f.write(json.dumps(entry) + "\n")
+                f.flush()
+                time.sleep(self.interval)
 
 def batched(iterable, n):
     batch = []
@@ -23,6 +69,26 @@ def read_jsonl(path):
             if l.strip():
                 yield json.loads(l)
 
+
+def read_jsonl_shard(path, shard_index: int, num_shards: int):
+    record_idx = 0
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            if record_idx % num_shards == shard_index:
+                yield json.loads(line)
+            record_idx += 1
+
+
+def default_hf_cache_dir() -> str:
+    if os.environ.get("HF_HUB_CACHE"):
+        return os.environ["HF_HUB_CACHE"]
+    if os.environ.get("HF_HOME"):
+        return os.path.join(os.environ["HF_HOME"], "hub")
+    return os.path.join(ROOT_DIR, ".hf_cache", "hub")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--model', required=True)
@@ -35,9 +101,30 @@ def main():
     ap.add_argument('--dtype', default='bfloat16', choices=['bfloat16','bf16','float16','fp16','float32','fp32'])
     ap.add_argument('--flush_every', type=int, default=256,
                     help='Write to parquet every N samples to avoid high RAM')
+    ap.add_argument('--shard_index', type=int, default=0,
+                    help='Process records where record_index %% num_shards == shard_index')
+    ap.add_argument('--num_shards', type=int, default=1,
+                    help='Total number of dynamic input shards')
+    ap.add_argument('--telemetry', action='store_true')
+    ap.add_argument('--telemetry_output', type=str, default="results/cache/telemetry/feature/telemetry.jsonl")
+    ap.add_argument('--telemetry_interval', type=float, default=1.0)
+    ap.add_argument('--cache_dir', type=str, default=None,
+                    help='Hugging Face model cache directory; defaults to HF_HUB_CACHE/HF_HOME or repo-local .hf_cache')
+    ap.add_argument('--local_files_only', action='store_true',
+                    help='Load only from the local Hugging Face cache; do not download during cache generation')
     args = ap.parse_args()
 
+    if args.num_shards < 1:
+        raise ValueError("--num_shards must be >= 1")
+    if args.shard_index < 0 or args.shard_index >= args.num_shards:
+        raise ValueError("--shard_index must satisfy 0 <= shard_index < num_shards")
+
     os.makedirs(args.out_dir, exist_ok=True)
+
+    if args.cache_dir is None:
+        args.cache_dir = default_hf_cache_dir()
+    os.makedirs(args.cache_dir, exist_ok=True)
+    print(f"[INFO] Hugging Face cache: {args.cache_dir}")
 
     # --- dtype parsing
     dmap = {
@@ -48,16 +135,20 @@ def main():
     torch_dtype = dmap[args.dtype]
 
     # --- tokenizer
-    tok = AutoTokenizer.from_pretrained(args.model, use_fast=True)
+    print("[INFO] loading tokenizer...")
+    tok = AutoTokenizer.from_pretrained(args.model, use_fast=True, cache_dir=args.cache_dir, local_files_only=args.local_files_only)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
     # --- load teacher across 4 GPUs
     # Keep inputs on CPU; HF will dispatch internally with device_map='auto'
+    print("[INFO] Loading model...")
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
-        torch_dtype=torch_dtype,
+        dtype=torch_dtype,
         device_map='auto',
+        cache_dir=args.cache_dir,
+        local_files_only=args.local_files_only,
     )
     model.eval()
     # Avoid KV-cache to save memory
@@ -71,7 +162,8 @@ def main():
     def make_hook(li: int):
         def hook(_m, _inp, out):
             # out: (B,T,H) on some CUDA device; move to CPU immediately
-            captured[li] = out.detach().to('cpu')
+            hidden = out[0] if isinstance(out, tuple) else out
+            captured[li] = hidden.detach().cpu()
         return hook
 
     # Llama-style: model.model.layers[li]
@@ -81,7 +173,11 @@ def main():
         handles.append(layer_mod.register_forward_hook(make_hook(li)))
 
     # --- streaming read
-    texts = (rec['text'] for rec in read_jsonl(args.input_jsonl))
+    print("[INFO] Loading input dataset...")
+    num_texts = sum(1 for _ in read_jsonl_shard(args.input_jsonl, args.shard_index, args.num_shards))
+    texts = (rec['text'] for rec in read_jsonl_shard(args.input_jsonl, args.shard_index, args.num_shards))
+    print(f"[INFO] Processing dynamic shard {args.shard_index}/{args.num_shards} with {num_texts} records")
+
     shard_idx = 0
     rows: List[Dict[str, Any]] = []
 
@@ -90,51 +186,70 @@ def main():
         if not rows:
             return
         table = pa.Table.from_pylist(rows)
-        out_path = os.path.join(args.out_dir, f'fb_hints_{shard_idx:06d}.parquet')
+        if args.num_shards > 1:
+            filename = f'fb_hints_s{args.shard_index:03d}_{shard_idx:06d}.parquet'
+        else:
+            filename = f'fb_hints_{shard_idx:06d}.parquet'
+        out_path = os.path.join(args.out_dir, filename)
         pq.write_table(table, out_path, compression='zstd')
         print('Wrote', out_path, f'({len(rows)} samples)')
         shard_idx += 1
         rows = []
         gc.collect()
 
-    with torch.inference_mode():
-        for batch in tqdm(batched(texts, args.batch_size)):
-            # Tokenize on CPU; keep tensors on CPU (device_map dispatch handles placement)
-            enc = tok(list(batch), padding=True, truncation=True,
-                      max_length=args.max_length, return_tensors='pt')
-            # Run forward WITHOUT output_hidden_states big tuple; hooks will capture our layers
-            captured.clear()
-            _ = model(**enc, output_hidden_states=False, use_cache=False, return_dict=True)
+    sampler: Optional[TelemetrySampler] = None
 
-            input_ids = enc['input_ids'].cpu()
-            attn_mask = enc['attention_mask'].cpu()
+    if args.telemetry:
+        print(f"[Telemetry] Logging to {args.telemetry_output}")
+        sampler = TelemetrySampler(
+            output_path=args.telemetry_output,
+            interval=args.telemetry_interval,
+            phase="feature_embedding_cache",
+        )
+        sampler.start()
+    try: 
+        with torch.inference_mode():
+            for batch in tqdm(batched(texts, args.batch_size), total=math.ceil(num_texts / args.batch_size)):
+                # Tokenize on CPU; keep tensors on CPU (device_map dispatch handles placement)
+                enc = tok(list(batch), padding=True, truncation=True,
+                        max_length=args.max_length, return_tensors='pt')
+                # Run forward WITHOUT output_hidden_states big tuple; hooks will capture our layers
+                captured.clear()
+                _ = model(**enc, output_hidden_states=False, use_cache=False, return_dict=True)
 
-            # Build rows from captured CPU tensors
-            for b in range(input_ids.size(0)):
-                L = int(attn_mask[b].sum().item())
-                row = {
-                    'input_ids': input_ids[b, :L].tolist(),
-                    'attn_mask': attn_mask[b, :L].tolist(),
-                }
-                for li in target_layers:
-                    ht = captured[li][b, :L, :]  # (L, H) on CPU
-                    # NOTE: Parquet likes lists; we keep float16/bfloat16 as float32 to be safe
-                    row[f'hidden_L{li}'] = ht.to(torch.float32).tolist()
-                rows.append(row)
+                input_ids = enc['input_ids'].cpu()
+                attn_mask = enc['attention_mask'].cpu()
 
-            del enc, input_ids, attn_mask
-            captured.clear()
-            torch.cuda.empty_cache()
+                # Build rows from captured CPU tensors
+                for b in range(input_ids.size(0)):
+                    L = int(attn_mask[b].sum().item())
+                    row = {
+                        'input_ids': input_ids[b, :L].tolist(),
+                        'attn_mask': attn_mask[b, :L].tolist(),
+                    }
+                    for li in target_layers:
+                        ht = captured[li][b, :L, :]  # (L, H) on CPU
+                        # NOTE: Parquet likes lists; we keep float16/bfloat16 as float32 to be safe
+                        row[f'hidden_L{li}'] = ht.to(torch.float32).tolist()
+                    rows.append(row)
 
-            if len(rows) >= args.flush_every:
-                flush_rows()
+                del enc, input_ids, attn_mask
+                captured.clear()
+                torch.cuda.empty_cache()
 
-    # final flush
-    flush_rows()
+                if len(rows) >= args.flush_every:
+                    flush_rows()
 
-    # remove hooks
-    for h in handles:
-        h.remove()
+        # final flush
+        flush_rows()
+
+    finally:
+        for h in handles:
+            h.remove()
+
+        if sampler is not None:
+            print("[Telemetry] Stopping sampler")
+            sampler.stop()
 
 if __name__ == '__main__':
     main()

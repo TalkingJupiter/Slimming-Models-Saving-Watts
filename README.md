@@ -22,8 +22,12 @@ Energy-Aware-Knowledge-Distillation/
 │   ├── Llama-3.1-70B-Ins_harness.sh
 │   ├── Llama-3.1-8B-Ins_harness.sh
 │   ├── Qwen2.5-72B-Ins_harness.sh
-│   ├── Qwen2.5-7B-Ins_harness.sh
-│   └── train_base_from_shards.py
+│   └── Qwen2.5-7B-Ins_harness.sh
+│
+├── traditional-model/
+│   ├── train_sft.py
+│   ├── collator.py
+│   └── data_loader.py
 │
 ├── configs/
 │   ├── fb_base.yaml
