@@ -301,7 +301,7 @@ def main():
         batch_size=args.batch_size,   # per-rank batch size
         collate_fn=collate,
         drop_last=True,               # keep ranks aligned
-        num_workers=4,
+        num_workers=0,
         pin_memory=True
     )
 
