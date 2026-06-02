@@ -7,7 +7,7 @@ import pynvml
 
 class EnergyMonitor:
 
-    def __init__(self, sample_interval: float = 0.1, gpu_indices: Optional[List[int]] = None):
+    def __init__(self, sample_interval: float = 1.0, gpu_indices: Optional[List[int]] = None):
         self.sample_interval = sample_interval
         self._thread: Optional[threading.Thread] = None
         self._stop_flag: bool = False
