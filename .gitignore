@@ -4,7 +4,7 @@ machinefile*
 shards.jsonl
 serialization_dir/
 results/*.json
-fb_hints_L22/
+fb_hints_*/
 relb_embeds/
 topk_k16/
 __pycache__/

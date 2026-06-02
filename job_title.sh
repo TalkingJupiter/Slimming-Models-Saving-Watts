@@ -252,11 +252,12 @@ case "$TARGET:$JOB_KIND" in
     JOB_SCRIPT="eval/ept/ept_feature.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
-    ARRAY_ARGS=(--array=0-24)
+    EPT_ARRAY_MAX=$((${EPT_REPEATS:-5} * 5 - 1))
+    ARRAY_ARGS=(--array=0-${EPT_ARRAY_MAX})
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/ept/ept_feature_%x_%A_%a.out"
-    ERROR="logs/eval/ept/ept_feature_%x_%A_%a.err"
+    OUTPUT="logs/eval/ept/${SAFE_STUDENT_NAME}/feature/%x_%A_%a.out"
+    ERROR="logs/eval/ept/${SAFE_STUDENT_NAME}/feature/%x_%A_%a.err"
     ;;
 
   repacss:ept_relation)
@@ -270,11 +271,12 @@ case "$TARGET:$JOB_KIND" in
     JOB_SCRIPT="eval/ept/ept_relation.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
-    ARRAY_ARGS=(--array=0-24)
+    EPT_ARRAY_MAX=$((${EPT_REPEATS:-5} * 5 - 1))
+    ARRAY_ARGS=(--array=0-${EPT_ARRAY_MAX})
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/ept/ept_relation_%x_%A_%a.out"
-    ERROR="logs/eval/ept/ept_relation_%x_%A_%a.err"
+    OUTPUT="logs/eval/ept/${SAFE_STUDENT_NAME}/relation/%x_%A_%a.out"
+    ERROR="logs/eval/ept/${SAFE_STUDENT_NAME}/relation/%x_%A_%a.err"
     ;; 
 
   repacss:ept_response)
@@ -288,11 +290,12 @@ case "$TARGET:$JOB_KIND" in
     JOB_SCRIPT="eval/ept/ept_response.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
-    ARRAY_ARGS=(--array=0-24)
+    EPT_ARRAY_MAX=$((${EPT_REPEATS:-5} * 5 - 1))
+    ARRAY_ARGS=(--array=0-${EPT_ARRAY_MAX})
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/ept/ept_response_%x_%A_%a.out"
-    ERROR="logs/eval/ept/ept_response_%x_%A_%a.err"
+    OUTPUT="logs/eval/ept/${SAFE_STUDENT_NAME}/response/%x_%A_%a.out"
+    ERROR="logs/eval/ept/${SAFE_STUDENT_NAME}/response/%x_%A_%a.err"
     ;; 
 
   repacss:ept_student)
@@ -306,11 +309,12 @@ case "$TARGET:$JOB_KIND" in
     JOB_SCRIPT="eval/ept/ept_student.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
-    ARRAY_ARGS=(--array=0-4)
+    EPT_ARRAY_MAX=$((${EPT_REPEATS:-5} - 1))
+    ARRAY_ARGS=(--array=0-${EPT_ARRAY_MAX})
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/ept/ept_${SAFE_STUDENT_NAME}_base_%x_%j.out"
-    ERROR="logs/eval/ept/ept_${SAFE_STUDENT_NAME}_base_%x_%j.err"
+    OUTPUT="logs/eval/ept/${SAFE_STUDENT_NAME}/BASE/%x_%A_%a.out"
+    ERROR="logs/eval/ept/${SAFE_STUDENT_NAME}/BASE/%x_%A_%a.err"
     ;; 
 
   repacss:ept_teacher)
@@ -324,11 +328,12 @@ case "$TARGET:$JOB_KIND" in
     JOB_SCRIPT="eval/ept/ept_teacher.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
-    ARRAY_ARGS=(--array=0-4)
+    EPT_ARRAY_MAX=$((${EPT_REPEATS:-5} - 1))
+    ARRAY_ARGS=(--array=0-${EPT_ARRAY_MAX})
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/ept/ept_${SAFE_TEACHER_NAME}_base_%x_%j.out"
-    ERROR="logs/eval/ept/ept_${SAFE_TEACHER_NAME}_base_%x_%j.err"
+    OUTPUT="logs/eval/ept/${SAFE_TEACHER_NAME}/BASE/%x_%A_%a.out"
+    ERROR="logs/eval/ept/${SAFE_TEACHER_NAME}/BASE/%x_%A_%a.err"
     ;; 
 
   repacss:ept_trad_student)
@@ -342,11 +347,12 @@ case "$TARGET:$JOB_KIND" in
     JOB_SCRIPT="eval/ept/ept_Traditional_student.sh"
 
     GRES_ARGS=(--gpus-per-node=1)
-    ARRAY_ARGS=(--array=0-4)
+    EPT_ARRAY_MAX=$((${EPT_REPEATS:-5} * 5 - 1))
+    ARRAY_ARGS=(--array=0-${EPT_ARRAY_MAX})
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/ept/ept_trad_student_sft_%x_%A_%a.out"
-    ERROR="logs/eval/ept/ept_trad_student_sft_%x_%A_%a.err"
+    OUTPUT="logs/eval/ept/${SAFE_STUDENT_NAME}/traditional/raw/%x_%A_%a.out"
+    ERROR="logs/eval/ept/${SAFE_STUDENT_NAME}/traditional/raw/%x_%A_%a.err"
     ;; 
 
   repacss:hardness_submitter)
@@ -361,8 +367,8 @@ case "$TARGET:$JOB_KIND" in
 
     EXTRA_SBATCH_ARGS=()
 
-    OUTPUT="logs/eval/harness_submission_%x_%j.out"
-    ERROR="logs/eval/harness_submission_%x_%j.err"
+    OUTPUT="logs/eval/harness/${SAFE_STUDENT_NAME}/submission/%x_%j.out"
+    ERROR="logs/eval/harness/${SAFE_STUDENT_NAME}/submission/%x_%j.err"
     ;;
   
   repacss:traditional_eval)
@@ -375,9 +381,11 @@ case "$TARGET:$JOB_KIND" in
     TIME="48:00:00"
     JOB_SCRIPT="traditional-model/slurm/eval_8B_submitter.sh"
     GRES_ARGS=(--gpus-per-node=1)
-    ARRAY_ARGS=(--array=0-4)
-    OUTPUT="logs/eval/$SAFE_STUDENT_NAME/traditional_model/%x_%A_%a.out"
-    ERROR="logs/eval/$SAFE_STUDENT_NAME/traditional_model/%x_%A_%a.err"
+    HARNESS_REPEATS="${HARNESS_REPEATS:-${EPT_REPEATS:-5}}"
+    HARNESS_ARRAY_MAX=$((HARNESS_REPEATS * 5 - 1))
+    ARRAY_ARGS=(--array=0-${HARNESS_ARRAY_MAX})
+    OUTPUT="logs/eval/harness/${SAFE_STUDENT_NAME}/traditional/raw/%x_%A_%a.out"
+    ERROR="logs/eval/harness/${SAFE_STUDENT_NAME}/traditional/raw/%x_%A_%a.err"
   ;;
 
   repacss:teacher_harness)
@@ -390,8 +398,8 @@ case "$TARGET:$JOB_KIND" in
     TIME="48:00:00"
     JOB_SCRIPT="Base/Teacher_harness.sh"
     GRES_ARGS=(--gpus-per-node=1)
-    OUTPUT="logs/eval/base_${SAFE_TEACHER_NAME}/%x_%A_%a.out"
-    ERROR="logs/eval/base_${SAFE_TEACHER_NAME}/%x_%A_%a.err"
+    OUTPUT="logs/eval/harness/${SAFE_TEACHER_NAME}/BASE/%x_%j.out"
+    ERROR="logs/eval/harness/${SAFE_TEACHER_NAME}/BASE/%x_%j.err"
   ;;
 
   repacss:student_harness)
@@ -404,8 +412,8 @@ case "$TARGET:$JOB_KIND" in
     TIME="48:00:00"
     JOB_SCRIPT="Base/Student_harness.sh"
     GRES_ARGS=(--gpus-per-node=1)
-    OUTPUT="logs/eval/base_${SAFE_STUDENT_NAME}/%x_%A_%a.out"
-    ERROR="logs/eval/base_${SAFE_STUDENT_NAME}/%x_%A_%a.err"
+    OUTPUT="logs/eval/harness/${SAFE_STUDENT_NAME}/BASE/%x_%j.out"
+    ERROR="logs/eval/harness/${SAFE_STUDENT_NAME}/BASE/%x_%j.err"
   ;;
 
 

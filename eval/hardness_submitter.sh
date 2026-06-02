@@ -21,6 +21,8 @@ STUDENT_MODEL_SOURCE=$(resolve_hf_model "$STUDENT_MODEL")
 echo "[INFO] Student model source: $STUDENT_MODEL_SOURCE"
 
 CHAT_FLAGS=( --apply_chat_template --fewshot_as_multiturn )
+HARNESS_REPEATS="${HARNESS_REPEATS:-${EPT_REPEATS:-5}}"
+
 
 # -------------------------------------------------------------------
 # Collect adapters: all subdirs under serialization_dir/<student>/{feature,...}
@@ -68,8 +70,24 @@ submit_group () {
       echo "[WARN] Skipping '$ad' (missing adapter_config.json)"
       continue
     fi
-    echo "[INFO] Submitting: BASE=$base  ADAPTER=$ad"
-    sbatch eval/harness_runner.sh "$base" "$ad" "${CHAT_FLAGS[@]}"
+    method="$(basename "$(dirname "$ad")")"
+    adapter_name="$(basename "$ad")"
+    if [[ "$adapter_name" =~ ^[0-9]+$ ]]; then
+      model_number="$adapter_name"
+    else
+      model_number="$adapter_name"
+    fi
+
+    for repeat in $(seq 1 "$HARNESS_REPEATS"); do
+      log_dir="logs/eval/harness/${SAFE_STUDENT_NAME}/${method}/${model_number}"
+      mkdir -p "$log_dir"
+      echo "[INFO] Submitting: BASE=$base  ADAPTER=$ad  REPEAT=$repeat/$HARNESS_REPEATS"
+      sbatch \
+        --output="${log_dir}/repeat${repeat}_%j.out" \
+        --error="${log_dir}/repeat${repeat}_%j.err" \
+        --export=ALL,HARNESS_REPEAT="$repeat" \
+        eval/harness_runner.sh "$base" "$ad" "${CHAT_FLAGS[@]}"
+    done
   done
 }
 

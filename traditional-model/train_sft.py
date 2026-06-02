@@ -15,6 +15,7 @@ import os
 import sys
 import threading
 import time
+import traceback
 from typing import Any, Dict, Optional, cast
 
 import torch
@@ -166,6 +167,9 @@ def main() -> None:
 
     accelerator.print("Loading dataset shards...")
     dataset_hf: HFDataset = load_sharded_dataset(args.shards_file)  # type: ignore[assignment]
+    if len(dataset_hf) == 0:
+        raise ValueError(f"No rows loaded from shards file: {args.shards_file}")
+    accelerator.print(f"Loaded {len(dataset_hf)} training rows from {args.shards_file}")
     torch_dataset: TorchDataset[Any] = cast(TorchDataset[Any], dataset_hf)
 
     accelerator.print("Building dataloader...")
@@ -212,8 +216,11 @@ def main() -> None:
         total_steps = steps_per_epoch * num_epochs
     warmup_steps = int(total_steps * args.warmup_ratio)
 
+    dataset_rows = len(dataset_hf)
+    total_examples_target = min(dataset_rows * num_epochs, total_steps * args.grad_accum)
     accelerator.print(
-        f"num_epochs={num_epochs}, total_steps={total_steps}, warmup_steps={warmup_steps}"
+        f"num_epochs={num_epochs}, total_steps={total_steps}, warmup_steps={warmup_steps}, "
+        f"dataset_rows={dataset_rows}, target_examples~={total_examples_target}"
     )
 
     lr_scheduler = get_cosine_schedule_with_warmup(
@@ -234,12 +241,19 @@ def main() -> None:
 
     accelerator.print("Starting training...")
     global_step = 0
+    examples_seen = 0
+    tokens_seen = 0
     optimizer.zero_grad(set_to_none=True)
 
     try:
         for epoch in range(num_epochs):
             model.train()
             for step, batch in enumerate(dataloader):
+                batch_examples = int(batch["input_ids"].shape[0])
+                batch_tokens = int(batch["attention_mask"].sum().item())
+                examples_seen += batch_examples
+                tokens_seen += batch_tokens
+
                 outputs: Any = model(**batch)
                 raw_loss: torch.Tensor = outputs.loss
                 loss = raw_loss / args.grad_accum
@@ -259,12 +273,19 @@ def main() -> None:
                 global_step += 1
 
                 if global_step % args.log_every == 0 or global_step == 1:
+                    epoch_examples_seen = min(step + 1, dataset_rows)
+                    epoch_fraction = epoch_examples_seen / dataset_rows if dataset_rows else 0.0
+                    total_fraction = examples_seen / total_examples_target if total_examples_target else 0.0
                     accelerator.print(
-                        f"[Epoch {epoch}] Step {global_step}/{total_steps} | "
-                        f"Loss: {float(raw_loss.detach().item()):.4f}"
+                        f"[Epoch {epoch + 1}/{num_epochs}] Step {global_step}/{total_steps} | "
+                        f"Loss: {float(raw_loss.detach().item()):.4f} | "
+                        f"epoch_examples={epoch_examples_seen}/{dataset_rows} ({epoch_fraction:.2%}) | "
+                        f"total_examples~={examples_seen}/{total_examples_target} ({total_fraction:.2%}) | "
+                        f"tokens_seen={tokens_seen}"
                     )
 
                 if args.save_every > 0 and global_step % args.save_every == 0:
+                    accelerator.print(f"Saving checkpoint at step {global_step}...")
                     save_checkpoint(
                         accelerator,
                         model,
@@ -288,4 +309,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        print("[ERROR] train_sft.py failed with an unhandled exception:", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+        raise
