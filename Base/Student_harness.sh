@@ -19,6 +19,12 @@ echo "[INFO] Tasks: $TASKS"
 source ~/.bashrc 2>/dev/null || true
 conda activate kd 2>/dev/null || true
 [[ -f scripts/_env_single_node.sh ]] && source scripts/_env_single_node.sh
+
+JOB_GROUP_ID=${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-manual}}
+TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
+export HF_DATASETS_CACHE="$HF_HOME/datasets_eval/harness/${JOB_GROUP_ID}_${TASK_ID}"
+mkdir -p "$HF_DATASETS_CACHE"
+echo "[INFO] HF_DATASETS_CACHE: $HF_DATASETS_CACHE"
 BASE_SOURCE=$(resolve_hf_model "$BASE")
 echo "[INFO] Model source: $BASE_SOURCE"
 
@@ -35,9 +41,9 @@ fi
 
 
 # OUTFILE="results/harness/base/harness_${RUN_NAME}_${SLURM_JOB_ID}.json"
-OUTFILE="results/${RUN_NAME}/BASE/EVAL/eval_${RUN_NAME}.json"
+OUTFILE="results/${RUN_NAME}/BASE/harness/eval_${RUN_NAME}.json"
 
-mkdir -p logs results/${RUN_NAME}/BASE/EVAL
+mkdir -p logs results/${RUN_NAME}/BASE/harness
 
 echo "[INFO] Output -> $OUTFILE"
 
