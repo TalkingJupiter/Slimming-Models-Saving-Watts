@@ -51,6 +51,7 @@ submit_job() {
     "STUDENT=$STUDENT"
     "TEACHER_DATA=$TEACHER_DATA"
     "EPT_REPEATS=$EPT_REPEATS"
+    "HARNESS_REPEATS=${HARNESS_REPEATS:-$EPT_REPEATS}"
   )
 
   if [[ "$job_kind" == "build_shards" ]]; then
@@ -129,7 +130,24 @@ Pipeline dependencies:
   caches -> feature/relation/response KD distillation
   KD distillations + traditional SFT -> base student EPT -> base teacher EPT
   base teacher EPT -> feature EPT -> relation EPT -> response EPT -> traditional EPT
-  KD EPT + traditional EPT -> harness submitter -> traditional/base harness jobs
+  KD EPT -> harness submitter (submits feature/response/relation harness arrays) -> base harness jobs
+
+Log output layout:
+  EPT:
+    logs/eval/ept/<safe_model_name>/<method>/raw_or_slurm_file.{out,err}
+    logs/eval/ept/${SAFE_STUDENT_NAME}/{feature,relation,response,traditional}/<model_index>/repeat<repeat>_<array_job_id>_<array_task_id>.{out,err}
+  Harness:
+    logs/eval/harness/${SAFE_STUDENT_NAME}/{feature,response,relation}/raw/<job_name>_<array_job_id>_<array_task_id>.{out,err}
+    logs/eval/harness/${SAFE_STUDENT_NAME}/traditional/raw/<job_name>_<array_job_id>_<array_task_id>.{out,err}
+    logs/eval/harness/<safe_model_name>/BASE/<job_name>_<job_id>.{out,err}
+
+Harness output layout:
+  Base student/teacher:
+    results/<safe_model_name>/BASE/harness/eval_<safe_model_name>.json
+  KD feature/relation/response:
+    results/${SAFE_STUDENT_NAME}/{feature,relation,response}/<model_index>/harness/eval_repeat<repeat>.json
+  Traditional SFT:
+    results/${SAFE_STUDENT_NAME}/traditional/<model_index>/harness/eval_repeat<repeat>.json
 
 EPT output layout:
   Base student:
@@ -137,11 +155,11 @@ EPT output layout:
   Base teacher:
     results/${SAFE_TEACHER_NAME}/BASE/EPT/ept_base<array_task>.json
   KD feature/relation/response:
-    results/${SAFE_STUDENT_NAME}/{feature,relation,response}/<model_number>/EPT/ept_repeat<repeat>.json
-    model_number = SLURM_ARRAY_TASK_ID / EPT_REPEATS + 1
+    results/${SAFE_STUDENT_NAME}/{feature,relation,response}/<model_index>/EPT/ept_repeat<repeat>.json
+    model_index  = SLURM_ARRAY_TASK_ID / EPT_REPEATS
     repeat       = SLURM_ARRAY_TASK_ID % EPT_REPEATS + 1
   Traditional SFT:
-    results/${SAFE_STUDENT_NAME}/traditional/<array_task>/EPT/ept_traditional_<array_task>.json
+    results/${SAFE_STUDENT_NAME}/traditional/<model_index>/EPT/ept_repeat<repeat>.json
 USAGE
 }
 
@@ -171,42 +189,42 @@ echo "[PIPELINE] shard_streaming=$SHARD_STREAMING"
 echo "[PIPELINE] shard_out=$SHARD_OUT"
 echo "[PIPELINE] ept_repeats=$EPT_REPEATS"
 echo "[PIPELINE] hf_cache_root=${HF_CACHE_ROOT:-.hf_cache}"
-echo "[PIPELINE] ept_kd_layout=results/${SAFE_STUDENT_NAME}/{feature,relation,response}/<model_number>/EPT/ept_repeat<repeat>.json"
+echo "[PIPELINE] ept_kd_layout=results/${SAFE_STUDENT_NAME}/{feature,relation,response}/<model_index>/EPT/ept_repeat<repeat>.json"
 
-submit_job env
-ENV_ID="$LAST_JOB_ID"
+# submit_job env
+# ENV_ID="$LAST_JOB_ID"
 
-submit_job build_shards "$(afterok "$ENV_ID")"
-SHARDS_ID="$LAST_JOB_ID"
+# submit_job build_shards "$(afterok "$ENV_ID")"
+# SHARDS_ID="$LAST_JOB_ID"
 
-submit_job warm_hf_cache "$(afterok "$ENV_ID")"
-WARM_HF_CACHE_ID="$LAST_JOB_ID"
+# submit_job warm_hf_cache "$(afterok "$ENV_ID")"
+# WARM_HF_CACHE_ID="$LAST_JOB_ID"
 
-submit_job build_feature_cache "$(afterok "$SHARDS_ID" "$WARM_HF_CACHE_ID")"
-FEATURE_CACHE_ID="$LAST_JOB_ID"
+# submit_job build_feature_cache
+# FEATURE_CACHE_ID="$LAST_JOB_ID"
 
-submit_job build_relation_cache "$(afterok "$SHARDS_ID" "$FEATURE_CACHE_ID")"
-RELATION_CACHE_ID="$LAST_JOB_ID"
+# submit_job build_relation_cache "$(afterok "$SHARDS_ID" "$FEATURE_CACHE_ID")"
+# RELATION_CACHE_ID="$LAST_JOB_ID"
 
-submit_job build_response_cache "$(afterok "$SHARDS_ID" "$RELATION_CACHE_ID")"
-RESPONSE_CACHE_ID="$LAST_JOB_ID"
+# submit_job build_response_cache "$(afterok "$SHARDS_ID" "$RELATION_CACHE_ID")"
+# RESPONSE_CACHE_ID="$LAST_JOB_ID"
 
 
-submit_job feature "$(afterok "$FEATURE_CACHE_ID")"
-FEATURE_ID="$LAST_JOB_ID"
+# submit_job feature "$(afterok "$FEATURE_CACHE_ID")"
+# FEATURE_ID="$LAST_JOB_ID"
 
-submit_job relation "$(afterok "$RELATION_CACHE_ID" "$FEATURE_ID")"
-RELATION_ID="$LAST_JOB_ID"
+# submit_job relation
+# RELATION_ID="$LAST_JOB_ID"
 
-submit_job response "$(afterok "$RESPONSE_CACHE_ID" "$RELATION_ID")"
-RESPONSE_ID="$LAST_JOB_ID"
+# submit_job response "$(afterok "$RELATION_ID")"
+# RESPONSE_ID="$LAST_JOB_ID"
 
-submit_job traditional "$(afterok "$RESPONSE_ID")"
-TRADITIONAL_ID="$LAST_JOB_ID"
+# submit_job traditional "$(afterok "$RESPONSE_ID")"
+# TRADITIONAL_ID="$LAST_JOB_ID"
 
-DISTILL_AND_TRAD_DEP="$(afterok "$FEATURE_ID" "$RELATION_ID" "$RESPONSE_ID" "$TRADITIONAL_ID")"
+# DISTILL_AND_TRAD_DEP="$(afterok "$FEATURE_ID" "$RELATION_ID" "$RESPONSE_ID" "$TRADITIONAL_ID")"
 
-submit_job ept_student "$DISTILL_AND_TRAD_DEP"
+submit_job ept_student
 EPT_STUDENT_ID="$LAST_JOB_ID"
 
 submit_job ept_teacher "$(afterok "$EPT_STUDENT_ID")"
@@ -221,16 +239,16 @@ EPT_RELATION_ID="$LAST_JOB_ID"
 submit_job ept_response "$(afterok "$EPT_RELATION_ID")"
 EPT_RESPONSE_ID="$LAST_JOB_ID"
 
-submit_job ept_trad_student "$(afterok "$EPT_RESPONSE_ID")"
-EPT_TRAD_ID="$LAST_JOB_ID"
+# submit_job ept_trad_student
+# EPT_TRAD_ID="$LAST_JOB_ID"
 
-submit_job hardness_submitter "$(afterok "$EPT_FEATURE_ID" "$EPT_RELATION_ID" "$EPT_RESPONSE_ID" "$EPT_TRAD_ID")"
+submit_job hardness_submitter "$(afterok "$EPT_FEATURE_ID" "$EPT_RELATION_ID" "$EPT_RESPONSE_ID")"
 HARNESS_ID="$LAST_JOB_ID"
 
-submit_job traditional_eval "$(afterok "$HARNESS_ID")"
-TRADITIONAL_EVAL="$LAST_JOB_ID"
+# submit_job traditional_eval
+# TRADITIONAL_EVAL="$LAST_JOB_ID"
 
-submit_job teacher_harness "$(afterok "$TRADITIONAL_EVAL")"
+submit_job teacher_harness "$(afterok "$HARNESS_ID")"
 TEACHER_HARNESS="$LAST_JOB_ID"
 
 submit_job student_harness "$(afterok "$TEACHER_HARNESS")"
@@ -238,32 +256,32 @@ STUDENT_HARNESS="$LAST_JOB_ID"
 
 cat <<SUMMARY
 [SUMMARY]
-  env=$ENV_ID
-  build_shards=$SHARDS_ID
-  warm_hf_cache=$WARM_HF_CACHE_ID
-  feature_cache=$FEATURE_CACHE_ID
-  relation_cache=$RELATION_CACHE_ID
-  response_cache=$RESPONSE_CACHE_ID
-  feature_kd=$FEATURE_ID
-  relation_kd=$RELATION_ID
-  response_kd=$RESPONSE_ID
-  traditional_sft=$TRADITIONAL_ID
-  ept_student=$EPT_STUDENT_ID
-  ept_teacher=$EPT_TEACHER_ID
-  ept_feature=$EPT_FEATURE_ID
-  ept_relation=$EPT_RELATION_ID
-  ept_response=$EPT_RESPONSE_ID
-  ept_traditional=$EPT_TRAD_ID
-  harness_submitter=$HARNESS_ID
-  traditional_eval=$TRADITIONAL_EVAL
-  teacher_harness=$TEACHER_HARNESS
-  student_harness=$STUDENT_HARNESS
+  env=${ENV_ID:-skipped}
+  build_shards=${SHARDS_ID:-skipped}
+  warm_hf_cache=${WARM_HF_CACHE_ID:-skipped}
+  feature_cache=${FEATURE_CACHE_ID:-skipped}
+  relation_cache=${RELATION_CACHE_ID:-skipped}
+  response_cache=${RESPONSE_CACHE_ID:-skipped}
+  feature_kd=${FEATURE_ID:-skipped}
+  relation_kd=${RELATION_ID:-skipped}
+  response_kd=${RESPONSE_ID:-skipped}
+  traditional_sft=${TRADITIONAL_ID:-skipped}
+  ept_student=${EPT_STUDENT_ID:-skipped}
+  ept_teacher=${EPT_TEACHER_ID:-skipped}
+  ept_feature=${EPT_FEATURE_ID:-skipped}
+  ept_relation=${EPT_RELATION_ID:-skipped}
+  ept_response=${EPT_RESPONSE_ID:-skipped}
+  ept_traditional=${EPT_TRAD_ID:-skipped}
+  harness_submitter=${HARNESS_ID:-skipped}
+  traditional_eval=${TRADITIONAL_EVAL:-skipped}
+  teacher_harness=${TEACHER_HARNESS:-skipped}
+  student_harness=${STUDENT_HARNESS:-skipped}
 
 [OUTPUTS]
   ept_student=results/${SAFE_STUDENT_NAME}/BASE/EPT/ept_base<array_task>.json
   ept_teacher=results/${SAFE_TEACHER_NAME}/BASE/EPT/ept_base<array_task>.json
-  ept_feature=results/${SAFE_STUDENT_NAME}/feature/<model_number>/EPT/ept_repeat<repeat>.json
-  ept_relation=results/${SAFE_STUDENT_NAME}/relation/<model_number>/EPT/ept_repeat<repeat>.json
-  ept_response=results/${SAFE_STUDENT_NAME}/response/<model_number>/EPT/ept_repeat<repeat>.json
-  ept_traditional=results/${SAFE_STUDENT_NAME}/traditional/<array_task>/EPT/ept_traditional_<array_task>.json
+  ept_feature=results/${SAFE_STUDENT_NAME}/feature/<model_index>/EPT/ept_repeat<repeat>.json
+  ept_relation=results/${SAFE_STUDENT_NAME}/relation/<model_index>/EPT/ept_repeat<repeat>.json
+  ept_response=results/${SAFE_STUDENT_NAME}/response/<model_index>/EPT/ept_repeat<repeat>.json
+  ept_traditional=results/${SAFE_STUDENT_NAME}/traditional/<model_index>/EPT/ept_repeat<repeat>.json
 SUMMARY

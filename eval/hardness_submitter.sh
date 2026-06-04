@@ -56,44 +56,32 @@ fi
 # Submission helper
 # -------------------------------------------------------------------
 submit_group () {
-  local base="$1"; shift
+  local method="$1"
+  local base="$2"
+  shift 2
   local -a adapters=( "$@" )
 
   if [[ ${#adapters[@]} -eq 0 ]]; then
-    echo "[WARN] No adapters for base '$base' - skipping group"
+    echo "[WARN] No adapters for method '$method' and base '$base' - skipping group"
     return
   fi
 
-  for ad in "${adapters[@]}"; do
-    # validate adapter dir contains adapter_config.json
-    if [[ ! -f "$ad/adapter_config.json" ]]; then
-      echo "[WARN] Skipping '$ad' (missing adapter_config.json)"
-      continue
-    fi
-    method="$(basename "$(dirname "$ad")")"
-    adapter_name="$(basename "$ad")"
-    if [[ "$adapter_name" =~ ^[0-9]+$ ]]; then
-      model_number="$adapter_name"
-    else
-      model_number="$adapter_name"
-    fi
+  local array_max=$(( ${#adapters[@]} * HARNESS_REPEATS - 1 ))
+  local log_dir="logs/eval/harness/${SAFE_STUDENT_NAME}/${method}/raw"
+  mkdir -p "$log_dir"
 
-    for repeat in $(seq 1 "$HARNESS_REPEATS"); do
-      log_dir="logs/eval/harness/${SAFE_STUDENT_NAME}/${method}/${model_number}"
-      mkdir -p "$log_dir"
-      echo "[INFO] Submitting: BASE=$base  ADAPTER=$ad  REPEAT=$repeat/$HARNESS_REPEATS"
-      sbatch \
-        --output="${log_dir}/repeat${repeat}_%j.out" \
-        --error="${log_dir}/repeat${repeat}_%j.err" \
-        --export=ALL,HARNESS_REPEAT="$repeat" \
-        eval/harness_runner.sh "$base" "$ad" "${CHAT_FLAGS[@]}"
-    done
-  done
+  echo "[INFO] Submitting harness array: METHOD=$method BASE=$base ADAPTERS=${#adapters[@]} REPEATS=$HARNESS_REPEATS ARRAY=0-$array_max"
+  sbatch \
+    --array="0-${array_max}" \
+    --output="${log_dir}/%x_%A_%a.out" \
+    --error="${log_dir}/%x_%A_%a.err" \
+    --export=ALL,HARNESS_METHOD="$method",HARNESS_REPEATS="$HARNESS_REPEATS" \
+    eval/harness_array_runner.sh "$base" "${CHAT_FLAGS[@]}"
 }
 
 # -------------------------------------------------------------------
-# Submit all groups
+# Submit all groups: one Slurm array per distillation method
 # -------------------------------------------------------------------
-submit_group "$STUDENT_MODEL_SOURCE"  "${ADAPTERS_FEATURE[@]}"
-submit_group "$STUDENT_MODEL_SOURCE" "${ADAPTERS_RESPONSE[@]}"
-submit_group "$STUDENT_MODEL_SOURCE" "${ADAPTERS_RELATION[@]}"
+submit_group "feature" "$STUDENT_MODEL_SOURCE" "${ADAPTERS_FEATURE[@]}"
+submit_group "response" "$STUDENT_MODEL_SOURCE" "${ADAPTERS_RESPONSE[@]}"
+submit_group "relation" "$STUDENT_MODEL_SOURCE" "${ADAPTERS_RELATION[@]}"
