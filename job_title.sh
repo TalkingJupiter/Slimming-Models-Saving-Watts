@@ -392,12 +392,12 @@ case "$TARGET:$JOB_KIND" in
     JOB_NAME="base_${SAFE_TEACHER_NAME}_harness"
     PARTITION=$GPU
     NODES="1"
-    GPUS_PER_NODE="1"
-    CPUS_PER_TASK="6"
-    MEM="32G"
+    GPUS_PER_NODE="4"
+    CPUS_PER_TASK="16"
+    MEM="128G"
     TIME="48:00:00"
     JOB_SCRIPT="Base/Teacher_harness.sh"
-    GRES_ARGS=(--gpus-per-node=1)
+    GRES_ARGS=(--gpus-per-node=4)
     OUTPUT="logs/eval/harness/${SAFE_TEACHER_NAME}/BASE/%x_%j.out"
     ERROR="logs/eval/harness/${SAFE_TEACHER_NAME}/BASE/%x_%j.err"
   ;;
