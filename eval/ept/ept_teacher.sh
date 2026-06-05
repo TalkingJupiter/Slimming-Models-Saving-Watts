@@ -9,7 +9,12 @@ set -euo pipefail
 MODEL=${TEACHER:-meta-llama/Meta-Llama-3.1-70B}   # Model to benchmark
 NUM_PROMPTS=${EPT_NUM_PROMPTS:-100}              # Number of prompts
 BATCH_SIZE=${EPT_BATCH_SIZE:-2}                 # Batch size for generation
-GPU_INDEX=${EPT_GPU_INDICES:-0}                 # GPU index or comma-separated indices to monitor
+if [[ -n "${EPT_GPU_INDICES:-}" ]]; then
+    GPU_INDEX="$EPT_GPU_INDICES"
+else
+    GPU_COUNT="${SLURM_GPUS_ON_NODE:-4}"
+    GPU_INDEX="$(seq -s, 0 $((GPU_COUNT - 1)))"
+fi
 MAX_NEW_TOKENS_LIST=${EPT_MAX_NEW_TOKENS_LIST:-32,64,128,256,512,1024}
 WARMUP_BATCHES=${EPT_WARMUP_BATCHES:-2}
 SAMPLE_INTERVAL=${EPT_SAMPLE_INTERVAL:-1.0}

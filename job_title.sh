@@ -323,11 +323,11 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="4"
     CPUS_PER_TASK="16"
-    MEM="24G"
+    MEM="128G"
     TIME="48:00:00"
     JOB_SCRIPT="eval/ept/ept_teacher.sh"
 
-    GRES_ARGS=(--gpus-per-node=1)
+    GRES_ARGS=(--gpus-per-node=4)
     EPT_ARRAY_MAX=$((${EPT_REPEATS:-5} - 1))
     ARRAY_ARGS=(--array=0-${EPT_ARRAY_MAX})
     EXTRA_SBATCH_ARGS=()
