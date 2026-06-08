@@ -22,6 +22,7 @@ echo "[INFO] Student model source: $STUDENT_MODEL_SOURCE"
 
 CHAT_FLAGS=( --apply_chat_template --fewshot_as_multiturn )
 HARNESS_REPEATS="${HARNESS_REPEATS:-${EPT_REPEATS:-5}}"
+HARNESS_TASKS="${HARNESS_TASKS:-mmlu,hellaswag,bbh,arc_challenge}"
 
 
 # -------------------------------------------------------------------
@@ -72,16 +73,29 @@ submit_group () {
 
   echo "[INFO] Submitting harness array: METHOD=$method BASE=$base ADAPTERS=${#adapters[@]} REPEATS=$HARNESS_REPEATS ARRAY=0-$array_max"
   sbatch \
+    --dependency="afterok:${HARNESS_WARMUP_ID}" \
     --array="0-${array_max}" \
     --output="${log_dir}/%x_%A_%a.out" \
     --error="${log_dir}/%x_%A_%a.err" \
-    --export=ALL,HARNESS_METHOD="$method",HARNESS_REPEATS="$HARNESS_REPEATS" \
+    --export=ALL,HARNESS_METHOD="$method",HARNESS_REPEATS="$HARNESS_REPEATS",HARNESS_TASKS="$HARNESS_TASKS" \
     eval/harness_array_runner.sh "$base" "${CHAT_FLAGS[@]}"
 }
 
 # -------------------------------------------------------------------
-# Submit all groups: one Slurm array per distillation method
+# Prepare the shared lm-eval dataset cache once, then submit all groups:
+# one Slurm array per distillation method.
 # -------------------------------------------------------------------
+warmup_log_dir="logs/eval/harness/${SAFE_STUDENT_NAME}/dataset_warmup"
+mkdir -p "$warmup_log_dir"
+HARNESS_WARMUP_ID="$(
+  sbatch --parsable \
+    --output="${warmup_log_dir}/%x_%j.out" \
+    --error="${warmup_log_dir}/%x_%j.err" \
+    --export=ALL,HARNESS_TASKS="$HARNESS_TASKS" \
+    eval/harness_dataset_warmup.sh
+)"
+echo "[INFO] Submitted harness dataset warmup: $HARNESS_WARMUP_ID"
+
 submit_group "feature" "$STUDENT_MODEL_SOURCE" "${ADAPTERS_FEATURE[@]}"
 submit_group "response" "$STUDENT_MODEL_SOURCE" "${ADAPTERS_RESPONSE[@]}"
 submit_group "relation" "$STUDENT_MODEL_SOURCE" "${ADAPTERS_RELATION[@]}"

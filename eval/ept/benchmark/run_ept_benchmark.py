@@ -55,6 +55,31 @@ def encode_batch(tokenizer: Any, prompts: List[str], device: str) -> Dict[str, t
     return {key: value.to(device) for key, value in enc.items()}
 
 
+def model_device_map_for_json(model: Any) -> Optional[Dict[str, str]]:
+    device_map = getattr(model, "hf_device_map", None)
+    if not isinstance(device_map, dict):
+        return None
+    return {str(module): str(device) for module, device in device_map.items()}
+
+
+def infer_input_device(model: Any) -> str:
+    device_map = getattr(model, "hf_device_map", None)
+    if isinstance(device_map, dict):
+        for mapped_device in device_map.values():
+            mapped = str(mapped_device)
+            if mapped not in {"cpu", "disk"}:
+                return mapped if mapped.startswith("cuda") else f"cuda:{mapped}"
+
+    try:
+        first_param = next(model.parameters())
+        if first_param.device.type != "cpu":
+            return str(first_param.device)
+    except StopIteration:
+        pass
+
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
 def generate_batch(
     model: Any,
     tokenizer: Any,
@@ -191,7 +216,7 @@ def run_ept_benchmark(
     max_new_tokens_list: Optional[List[int]] = None,
     batch_size: int = 4,
     warmup_batches: int = 2,
-    device: str = "cuda",
+    device: Optional[str] = None,
     gpu_indices: Optional[List[int]] = None,
     sample_interval: float = 1.0,
     metadata: Optional[Dict[str, Any]] = None,
@@ -202,6 +227,7 @@ def run_ept_benchmark(
         base_model_name_or_path=base_model_name_or_path,
         adapter_name_or_path=adapter_name_or_path,
     )
+    input_device = device or infer_input_device(model)
 
     results = []
     for max_new_tokens in token_lengths:
@@ -213,7 +239,7 @@ def run_ept_benchmark(
                 max_new_tokens=max_new_tokens,
                 batch_size=batch_size,
                 warmup_batches=warmup_batches,
-                device=device,
+                device=input_device,
                 gpu_indices=gpu_indices,
                 sample_interval=sample_interval,
             )
@@ -229,6 +255,8 @@ def run_ept_benchmark(
         "warmup_batches": warmup_batches,
         "sample_interval_s": sample_interval,
         "gpu_indices": gpu_indices,
+        "input_device": input_device,
+        "hf_device_map": model_device_map_for_json(model),
         "decoding": {
             "do_sample": False,
             "max_new_tokens_list": token_lengths,
