@@ -463,7 +463,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="3"
     CPUS_PER_TASK="16"
-    MEM="192G"
+    MEM="188G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/build_caches.sh"
 
@@ -485,7 +485,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="3"
     CPUS_PER_TASK="16"
-    MEM="192G"
+    MEM="188G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/run_feature_based_single_node.sh"
 
@@ -507,7 +507,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="3"
     CPUS_PER_TASK="16"
-    MEM="192G"
+    MEM="188G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/run_relation_based_single_node.sh"
 
@@ -529,7 +529,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="3"
     CPUS_PER_TASK="16"
-    MEM="192G"
+    MEM="188G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/run_response_based_single_node.sh"
 
@@ -552,7 +552,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="3"
     CPUS_PER_TASK="16"
-    MEM="192G"
+    MEM="188G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/build_feature_cache.sh"
     GRES_ARGS=(--gres=gpu:a100:3)
@@ -573,7 +573,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="3"
     CPUS_PER_TASK="16"
-    MEM="192G"
+    MEM="188G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/build_relation_cache.sh"
     GRES_ARGS=(--gres=gpu:a100:3)
@@ -594,7 +594,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="3"
     CPUS_PER_TASK="16"
-    MEM="192G"
+    MEM="188G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/build_response_cache.sh"
     GRES_ARGS=(--gres=gpu:a100:3)
@@ -615,7 +615,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="1"
     CPUS_PER_TASK="6"
-    MEM="192G"
+    MEM="188G"
     TIME="48:00:00"
     JOB_SCRIPT="traditional-model/slurm/run_sft.sh"
     GRES_ARGS=(--gres=gpu:a100:1)
@@ -699,7 +699,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="3"
     CPUS_PER_TASK="16"
-    MEM="192G"
+    MEM="188G"
     TIME="48:00:00"
     JOB_SCRIPT="eval/ept/ept_teacher.sh"
     GRES_ARGS=(--gres=gpu:a100:3)
@@ -764,7 +764,7 @@ case "$TARGET:$JOB_KIND" in
     NODES="1"
     GPUS_PER_NODE="3"
     CPUS_PER_TASK="16"
-    MEM="192G"
+    MEM="188G"
     TIME="48:00:00"
     JOB_SCRIPT="Base/Teacher_harness.sh"
     GRES_ARGS=(--gres=gpu:a100:3)
