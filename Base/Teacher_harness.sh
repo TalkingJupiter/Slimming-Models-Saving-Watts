@@ -28,8 +28,12 @@ echo "[INFO] HF_DATASETS_CACHE: $HF_DATASETS_CACHE"
 BASE_SOURCE=$(resolve_hf_model "$BASE")
 echo "[INFO] Model source: $BASE_SOURCE"
 
-# Use all 4 GPUs requested by SLURM (if not already set)
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3}"
+# Use all GPUs requested by SLURM when CUDA_VISIBLE_DEVICES is not set.
+if [[ -z "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+    GPU_COUNT="${SLURM_GPUS_ON_NODE:-4}"
+    CUDA_VISIBLE_DEVICES="$(seq -s, 0 $((GPU_COUNT - 1)))"
+    export CUDA_VISIBLE_DEVICES
+fi
 echo "[INFO] CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}"
 
 ###############################################################################
@@ -54,7 +58,7 @@ echo "[INFO] Output -> $OUTFILE"
 # 3. Build model args (multi-GPU model parallel)
 ###############################################################################
 
-# Key change: parallelize=True and device_map_option=auto so 70B spans 4 GPUs
+# Key change: parallelize=True so 70B spans the GPUs allocated by SLURM
 MODEL_ARGS="pretrained=${BASE_SOURCE},trust_remote_code=True,dtype=bfloat16,parallelize=True"
 
 if [[ -n "$ADAPTER" ]]; then
