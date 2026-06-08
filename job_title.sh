@@ -551,7 +551,7 @@ case "$TARGET:$JOB_KIND" in
     PARTITION=$GPU
     NODES="1"
     GPUS_PER_NODE="3"
-    CPUS_PER_TASK="48"
+    CPUS_PER_TASK="16"
     MEM="192G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/build_feature_cache.sh"
@@ -572,7 +572,7 @@ case "$TARGET:$JOB_KIND" in
     PARTITION=$GPU
     NODES="1"
     GPUS_PER_NODE="3"
-    CPUS_PER_TASK="48"
+    CPUS_PER_TASK="16"
     MEM="192G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/build_relation_cache.sh"
@@ -593,7 +593,7 @@ case "$TARGET:$JOB_KIND" in
     PARTITION=$GPU
     NODES="1"
     GPUS_PER_NODE="3"
-    CPUS_PER_TASK="48"
+    CPUS_PER_TASK="16"
     MEM="192G"
     TIME="48:00:00"
     JOB_SCRIPT="scripts/build_response_cache.sh"
@@ -698,7 +698,7 @@ case "$TARGET:$JOB_KIND" in
     PARTITION=$GPU
     NODES="1"
     GPUS_PER_NODE="3"
-    CPUS_PER_TASK="48"
+    CPUS_PER_TASK="16"
     MEM="192G"
     TIME="48:00:00"
     JOB_SCRIPT="eval/ept/ept_teacher.sh"
@@ -763,7 +763,7 @@ case "$TARGET:$JOB_KIND" in
     PARTITION=$GPU
     NODES="1"
     GPUS_PER_NODE="3"
-    CPUS_PER_TASK="48"
+    CPUS_PER_TASK="16"
     MEM="192G"
     TIME="48:00:00"
     JOB_SCRIPT="Base/Teacher_harness.sh"
